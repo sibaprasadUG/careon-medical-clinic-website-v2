@@ -1,0 +1,6 @@
+{
+  "name": "CareOn Medical Clinic",
+  "description": "Premium, modern & patient-centred digital healthcare platform for CareOn Medical Clinic — Caring Beyond Treatment.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
