@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { Doctor, Department, Service, WebsiteSettings, MediaAsset, AdminUser } from '../types';
 import { DEFAULT_DEPARTMENTS, DEFAULT_DOCTORS, DEFAULT_SERVICES, DEFAULT_WEBSITE_SETTINGS } from '../data/seedData';
 import { PROJECT_ASSETS_MANIFEST } from '../data/assetsManifest';
@@ -8,6 +9,7 @@ import { PROJECT_ASSETS_MANIFEST } from '../data/assetsManifest';
 // Persistent data file path for serverless / server environment
 const DATA_DIR = path.join(process.cwd(), '.data');
 const DATA_FILE = path.join(DATA_DIR, 'careon_store.json');
+const TMP_DATA_FILE = path.join(os.tmpdir(), 'careon_store.json');
 
 // Secret for HMAC session token signing (configurable via server env)
 const SESSION_SECRET =
@@ -29,6 +31,7 @@ export interface ServerStore {
 
 // In-memory cache for fast response and fallback in read-only environments
 let memoryStore: ServerStore | null = null;
+let lastLoadedMtime = 0;
 
 const DEMO_DOCTOR_NAMES = [
   'Dr. Arindam Banerjee',
@@ -40,33 +43,61 @@ const DEMO_DOCTOR_NAMES = [
 export function isRealDoctor(d: any): boolean {
   if (!d || typeof d !== 'object' || !d.name || typeof d.name !== 'string') return false;
   const name = d.name.trim();
+  if (!name) return false;
   if (DEMO_DOCTOR_NAMES.includes(name)) return false;
-  if (['doc-01', 'doc-02', 'doc-03', 'doc-04'].includes(d.id)) return false;
-  if (d.serviceType || d.category === 'Preventive' || d.category === 'Diagnostic' || d.category === 'Specialized' || d.category === 'Consultation') return false;
+  if (['doc-01', 'doc-02', 'doc-03', 'doc-04'].includes(d.id) && DEMO_DOCTOR_NAMES.includes(name)) return false;
+  if (d.serviceType || d.category === 'Preventive' || d.category === 'Diagnostic' || d.category === 'Specialized') return false;
   if (!d.departmentId) return false;
-  return Boolean(d.qualification || d.designation);
+  return true;
 }
 
 function ensureDataFile(): ServerStore {
-  if (memoryStore) {
+  let activeFilePath: string | null = null;
+  let activeMtime = 0;
+
+  try {
+    const dataFileExists = fs.existsSync(DATA_FILE);
+    const dataFileMtime = dataFileExists ? fs.statSync(DATA_FILE).mtimeMs : 0;
+
+    const tmpFileExists = fs.existsSync(TMP_DATA_FILE);
+    const tmpFileMtime = tmpFileExists ? fs.statSync(TMP_DATA_FILE).mtimeMs : 0;
+
+    if (tmpFileExists && tmpFileMtime > dataFileMtime) {
+      activeFilePath = TMP_DATA_FILE;
+      activeMtime = tmpFileMtime;
+    } else if (dataFileExists) {
+      activeFilePath = DATA_FILE;
+      activeMtime = dataFileMtime;
+    }
+  } catch {
+    // Stat error, continue
+  }
+
+  if (memoryStore && activeFilePath && activeMtime <= lastLoadedMtime) {
     return memoryStore;
   }
 
-  try {
-    if (fs.existsSync(DATA_FILE)) {
-      const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-      memoryStore = JSON.parse(raw);
-      if (memoryStore) {
-        if (Array.isArray(memoryStore.doctors)) {
-          memoryStore.doctors = memoryStore.doctors.filter(isRealDoctor);
+  if (activeFilePath) {
+    try {
+      const raw = fs.readFileSync(activeFilePath, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (parsed) {
+        if (Array.isArray(parsed.doctors)) {
+          parsed.doctors = parsed.doctors.filter(isRealDoctor);
         } else {
-          memoryStore.doctors = [];
+          parsed.doctors = [];
         }
-        return memoryStore;
+        memoryStore = parsed;
+        lastLoadedMtime = activeMtime;
+        return memoryStore!;
       }
+    } catch {
+      // JSON parse or read error, fallback to memoryStore or defaults
     }
-  } catch {
-    // Ignore file read error and initialize defaults
+  }
+
+  if (memoryStore) {
+    return memoryStore;
   }
 
   memoryStore = {
@@ -79,27 +110,32 @@ function ensureDataFile(): ServerStore {
     lastUpdated: new Date().toISOString()
   };
 
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    fs.writeFileSync(DATA_FILE, JSON.stringify(memoryStore, null, 2), 'utf-8');
-  } catch {
-    // Read-only filesystem fallback
-  }
-
+  persistStore(memoryStore);
   return memoryStore;
 }
 
 function persistStore(store: ServerStore) {
   memoryStore = store;
+  const jsonStr = JSON.stringify(store, null, 2);
+
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    fs.writeFileSync(DATA_FILE, JSON.stringify(store, null, 2), 'utf-8');
+    fs.writeFileSync(DATA_FILE, jsonStr, 'utf-8');
+    lastLoadedMtime = fs.statSync(DATA_FILE).mtimeMs;
   } catch {
-    // Read-only fallback
+    // Read-only filesystem in cloud/serverless environment
+  }
+
+  try {
+    fs.writeFileSync(TMP_DATA_FILE, jsonStr, 'utf-8');
+    const tmpMtime = fs.statSync(TMP_DATA_FILE).mtimeMs;
+    if (tmpMtime > lastLoadedMtime) {
+      lastLoadedMtime = tmpMtime;
+    }
+  } catch {
+    // tmp write error fallback
   }
 }
 

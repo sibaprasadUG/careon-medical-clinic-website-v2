@@ -170,12 +170,12 @@ export const ServicesAndDoctorsSplitSection: React.FC<ServicesAndDoctorsSplitSec
                 </div>
                 <div className="space-y-1 max-w-md mx-auto">
                   <h3 className="text-sm font-bold text-[#0B192C]">
-                    {lang === 'en' ? 'Consultant Roster & Chamber Schedules' : 'ডাক্তারদের চেম্বার ও সময়সূচী'}
+                    {lang === 'en' ? 'No doctors currently configured' : 'বর্তমানে কোনো চিকিৎসক নিবন্ধিত নেই'}
                   </h3>
                   <p className="text-xs text-slate-500 leading-relaxed">
                     {lang === 'en'
-                      ? 'Experienced visiting specialist doctors consult regularly across all major departments. Contact clinic reception for today’s active roster.'
-                      : 'বিভিন্ন বিভাগের অভিজ্ঞ বিশেষজ্ঞ ডাক্তারগণ নিয়মিত চেম্বার করেন। আজকের চেম্বার তালিকা জানতে হেল্পলাইনে যোগাযোগ করুন।'}
+                      ? 'Doctor profiles will appear here once configured from the Admin Panel.'
+                      : 'অ্যাডমিন প্যানেল থেকে কনফিগার করার পর চিকিৎসকদের তালিকা এখানে প্রদর্শিত হবে।'}
                   </p>
                 </div>
                 <div className="pt-2 flex flex-wrap items-center justify-center gap-3">

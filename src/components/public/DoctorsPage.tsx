@@ -130,7 +130,19 @@ export const DoctorsPage: React.FC<DoctorsPageProps> = ({
         </div>
 
         {/* Doctors Grid */}
-        {filteredDoctors.length === 0 ? (
+        {doctors.length === 0 ? (
+          <div className="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3 max-w-lg mx-auto">
+            <User className="w-12 h-12 text-slate-300 mx-auto" />
+            <h3 className="text-base font-bold text-slate-700">
+              {lang === 'en' ? 'No doctors currently configured' : 'বর্তমানে কোনো চিকিৎসক নিবন্ধিত নেই'}
+            </h3>
+            <p className="text-xs text-slate-400">
+              {lang === 'en'
+                ? 'Doctor profiles will appear here once configured from the Admin Panel.'
+                : 'অ্যাডমিন প্যানেল থেকে কনফিগার করার পর চিকিৎসকদের তালিকা এখানে প্রদর্শিত হবে।'}
+            </p>
+          </div>
+        ) : filteredDoctors.length === 0 ? (
           <div className="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3 max-w-lg mx-auto">
             <User className="w-12 h-12 text-slate-300 mx-auto" />
             <h3 className="text-base font-bold text-slate-700">

@@ -551,17 +551,25 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
 
                 {bookingCategory === 'DOCTOR_CONSULTATION' ? (
                   <div className="space-y-2">
-                    <select
-                      value={selectedDoctorId}
-                      onChange={(e) => setSelectedDoctorId(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-[#0F172A] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#007E70]/20 focus:border-[#007E70]"
-                    >
-                      {activeDoctors.map((doc) => (
-                        <option key={doc.id} value={doc.id}>
-                          {doc.name} — {doc.designation} ({doc.consultationDays.join(', ')})
-                        </option>
-                      ))}
-                    </select>
+                    {activeDoctors.length === 0 ? (
+                      <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-800">
+                        {lang === 'en'
+                          ? 'No doctors are currently available for online booking. Please call our clinic helpline at 9933335131.'
+                          : 'বর্তমানে কোনো চিকিৎসক অনলাইন বুকিংয়ের জন্য উপলব্ধ নেই। অনুগ্রহ করে আমাদের হেল্পলাইনে কল করুন: ৯৯৩৩৩৩৫১৩১।'}
+                      </div>
+                    ) : (
+                      <select
+                        value={selectedDoctorId}
+                        onChange={(e) => setSelectedDoctorId(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-[#0F172A] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#007E70]/20 focus:border-[#007E70]"
+                      >
+                        {activeDoctors.map((doc) => (
+                          <option key={doc.id} value={doc.id}>
+                            {doc.name} — {doc.designation} ({doc.consultationDays.join(', ')})
+                          </option>
+                        ))}
+                      </select>
+                    )}
 
                     {selectedDoc && doctorScheduleSummary && (
                       <div className="p-3 bg-teal-50/70 rounded-xl border border-teal-200 text-xs space-y-1.5">

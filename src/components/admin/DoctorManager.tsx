@@ -826,7 +826,7 @@ export const DoctorManager: React.FC = () => {
                           nameBn: autoTranslateToBengali(val)
                         }));
                       }}
-                      placeholder="e.g. Dr. Arindam Banerjee"
+                      placeholder="e.g. Dr. Debdutta Nayak"
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-[#007E70] focus:outline-none"
                     />
                   </div>
@@ -977,7 +977,7 @@ export const DoctorManager: React.FC = () => {
                         onChange={(e) =>
                           setFormState({ ...formState, profilePhotoAlt: e.target.value })
                         }
-                        placeholder="Alt text (e.g. Dr. Arindam Banerjee - Physician)"
+                        placeholder="Alt text (e.g. Dr. Debdutta Nayak - Physician)"
                         className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-[#007E70]"
                       />
                     </div>

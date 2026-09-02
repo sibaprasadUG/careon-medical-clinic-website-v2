@@ -138,16 +138,16 @@ export const DEFAULT_INSURANCE_PARTNERS: InsurancePartner[] = [
 export const DEFAULT_MEDIA_ASSETS: MediaAsset[] = [
   {
     id: 'media-doc-01',
-    fileName: 'dr_arindam_banerjee.jpg',
-    originalName: 'dr_arindam_banerjee.jpg',
+    fileName: 'consultant_physician.jpg',
+    originalName: 'consultant_physician.jpg',
     mimeType: 'image/jpeg',
     category: 'DOCTOR',
     url: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=800',
-    storageKey: 'careon/assets/doctor/media-doc-01_dr_arindam_banerjee.jpg',
+    storageKey: 'careon/assets/doctor/media-doc-01_consultant_physician.jpg',
     width: 800,
     height: 1000,
     fileSize: 184320,
-    altText: 'Dr. Arindam Banerjee - Consultant Physician & Diabetologist at CareOn Medical Clinic',
+    altText: 'CareOn Consultant Physician & Specialist Doctor',
     status: 'ACTIVE',
     createdAt: '2026-08-27T08:00:00.000Z',
     updatedAt: '2026-08-27T08:00:00.000Z',
@@ -157,16 +157,16 @@ export const DEFAULT_MEDIA_ASSETS: MediaAsset[] = [
   },
   {
     id: 'media-doc-02',
-    fileName: 'dr_debarati_mukherjee.jpg',
-    originalName: 'dr_debarati_mukherjee.jpg',
+    fileName: 'consultant_paediatrician.jpg',
+    originalName: 'consultant_paediatrician.jpg',
     mimeType: 'image/jpeg',
     category: 'DOCTOR',
     url: 'https://images.unsplash.com/photo-1594824813681-30c6f2a8a816?auto=format&fit=crop&q=80&w=800',
-    storageKey: 'careon/assets/doctor/media-doc-02_dr_debarati_mukherjee.jpg',
+    storageKey: 'careon/assets/doctor/media-doc-02_consultant_paediatrician.jpg',
     width: 800,
     height: 1000,
     fileSize: 198400,
-    altText: 'Dr. Debarati Mukherjee - Consultant Paediatrician at CareOn Medical Clinic',
+    altText: 'CareOn Consultant Paediatrician & Child Health Specialist',
     status: 'ACTIVE',
     createdAt: '2026-08-27T08:00:00.000Z',
     updatedAt: '2026-08-27T08:00:00.000Z',
@@ -176,16 +176,16 @@ export const DEFAULT_MEDIA_ASSETS: MediaAsset[] = [
   },
   {
     id: 'media-doc-03',
-    fileName: 'dr_siddhartha_sen.jpg',
-    originalName: 'dr_siddhartha_sen.jpg',
+    fileName: 'consultant_cardiologist.jpg',
+    originalName: 'consultant_cardiologist.jpg',
     mimeType: 'image/jpeg',
     category: 'DOCTOR',
     url: 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=800',
-    storageKey: 'careon/assets/doctor/media-doc-03_dr_siddhartha_sen.jpg',
+    storageKey: 'careon/assets/doctor/media-doc-03_consultant_cardiologist.jpg',
     width: 800,
     height: 1000,
     fileSize: 212480,
-    altText: 'Dr. Siddhartha Sen - Consultant Cardiologist at CareOn Medical Clinic',
+    altText: 'CareOn Consultant Cardiologist & Heart Specialist',
     status: 'ACTIVE',
     createdAt: '2026-08-27T08:00:00.000Z',
     updatedAt: '2026-08-27T08:00:00.000Z',
@@ -195,16 +195,16 @@ export const DEFAULT_MEDIA_ASSETS: MediaAsset[] = [
   },
   {
     id: 'media-doc-04',
-    fileName: 'dr_ananya_das.jpg',
-    originalName: 'dr_ananya_das.jpg',
+    fileName: 'consultant_gynaecologist.jpg',
+    originalName: 'consultant_gynaecologist.jpg',
     mimeType: 'image/jpeg',
     category: 'DOCTOR',
     url: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=800',
-    storageKey: 'careon/assets/doctor/media-doc-04_dr_ananya_das.jpg',
+    storageKey: 'careon/assets/doctor/media-doc-04_consultant_gynaecologist.jpg',
     width: 800,
     height: 1000,
     fileSize: 204800,
-    altText: 'Dr. Ananya Das - Consultant Gynaecologist & Obstetrician at CareOn Medical Clinic',
+    altText: 'CareOn Consultant Gynaecologist & Obstetrician',
     status: 'ACTIVE',
     createdAt: '2026-08-27T08:00:00.000Z',
     updatedAt: '2026-08-27T08:00:00.000Z',
@@ -1777,32 +1777,13 @@ export const DataAccessLayer = {
     return loadFromStorage<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, DEFAULT_AUDIT_LOGS);
   },
 
-  // --- AUTOMATIC RECOVERY OF REAL DOCTOR RECORDS ---
+  // --- AUTOMATIC PURGE OF LEGACY DOCTOR KEYS & STORAGE VALIDATION ---
   autoRecoverClientDoctorRecords(): Doctor[] {
     if (typeof window === 'undefined' || !window.localStorage) return [];
 
     try {
-      const DEMO_NAMES = [
-        'Dr. Arindam Banerjee',
-        'Dr. Sarmistha Mukherjee',
-        'Dr. Debabrata Roy',
-        'Dr. Nandini Sengupta'
-      ];
-      const DEMO_IDS = ['doc-01', 'doc-02', 'doc-03', 'doc-04'];
-
-      const isRealDoc = (doc: any): boolean => {
-        if (!doc || typeof doc !== 'object' || !doc.name || typeof doc.name !== 'string') return false;
-        const name = doc.name.trim();
-        if (DEMO_NAMES.includes(name) || DEMO_IDS.includes(doc.id)) return false;
-        if (doc.serviceType || doc.category === 'Preventive' || doc.category === 'Diagnostic' || doc.category === 'Specialized' || doc.category === 'Consultation') return false;
-        if (doc.id && (doc.id.startsWith('srv-') || doc.id.startsWith('dept-') || doc.id.startsWith('gal-') || doc.id.startsWith('faq-') || doc.id.startsWith('ins-') || doc.id.startsWith('asset-') || doc.id.startsWith('media-') || doc.id.startsWith('apt-'))) return false;
-        if (!doc.departmentId) return false;
-        return Boolean(doc.qualification || doc.designation);
-      };
-
-      const recoveredDoctors: Doctor[] = [];
-      const keysToCheck = [
-        STORAGE_KEYS.DOCTORS,
+      // Remove legacy keys to avoid resurrecting deleted doctors
+      const legacyKeys = [
         'careon_cms_doctors',
         'careon_doctors',
         'careon_doctors_backup',
@@ -1810,58 +1791,32 @@ export const DataAccessLayer = {
         'careon_admin_doctors',
         'doctors'
       ];
-
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (
-          k &&
-          !keysToCheck.includes(k) &&
-          k.toLowerCase().includes('doc') &&
-          !k.toLowerCase().includes('service') &&
-          !k.toLowerCase().includes('dept') &&
-          !k.toLowerCase().includes('gallery') &&
-          !k.toLowerCase().includes('faq') &&
-          !k.toLowerCase().includes('setting') &&
-          !k.toLowerCase().includes('seo') &&
-          !k.toLowerCase().includes('log') &&
-          !k.toLowerCase().includes('asset') &&
-          !k.toLowerCase().includes('partner')
-        ) {
-          keysToCheck.push(k);
-        }
-      }
-
-      for (const k of keysToCheck) {
+      legacyKeys.forEach((key) => {
         try {
-          const item = localStorage.getItem(k);
-          if (!item) continue;
-          const parsed = JSON.parse(item);
-          if (Array.isArray(parsed)) {
-            for (const doc of parsed) {
-              if (isRealDoc(doc)) {
-                if (!recoveredDoctors.some((rd) => rd.id === doc.id || rd.name.trim().toLowerCase() === doc.name.trim().toLowerCase())) {
-                  recoveredDoctors.push(doc);
-                }
-              }
-            }
-          }
+          localStorage.removeItem(key);
         } catch {
-          // Continue
+          // ignore
         }
-      }
+      });
 
-      if (recoveredDoctors.length > 0) {
-        saveToStorage(STORAGE_KEYS.DOCTORS, recoveredDoctors);
-        recoveredDoctors.forEach((doc) => syncDoctorToBackend(doc));
-        return recoveredDoctors;
-      } else {
-        const currentInStorage = loadFromStorage<Doctor[]>(STORAGE_KEYS.DOCTORS, []);
-        const realOnly = currentInStorage.filter(isRealDoc);
-        if (realOnly.length !== currentInStorage.length) {
-          saveToStorage(STORAGE_KEYS.DOCTORS, realOnly);
-        }
-        return realOnly;
+      const currentInStorage = loadFromStorage<Doctor[]>(STORAGE_KEYS.DOCTORS, []);
+      const realOnly = currentInStorage.filter(
+        (doc: any) =>
+          doc &&
+          typeof doc === 'object' &&
+          doc.name &&
+          typeof doc.name === 'string' &&
+          !['Dr. Arindam Banerjee', 'Dr. Sarmistha Mukherjee', 'Dr. Debabrata Roy', 'Dr. Nandini Sengupta'].includes(doc.name.trim()) &&
+          !['doc-01', 'doc-02', 'doc-03', 'doc-04'].includes(doc.id) &&
+          !doc.serviceType &&
+          !doc.category &&
+          doc.departmentId
+      );
+
+      if (realOnly.length !== currentInStorage.length) {
+        saveToStorage(STORAGE_KEYS.DOCTORS, realOnly);
       }
+      return realOnly;
     } catch {
       return [];
     }
@@ -1893,8 +1848,7 @@ export const DataAccessLayer = {
                 !DEMO_IDS.includes(d.id) &&
                 !d.serviceType &&
                 !d.category &&
-                d.departmentId &&
-                (d.qualification || d.designation)
+                d.departmentId
             );
             saveToStorage(STORAGE_KEYS.DOCTORS, cleanDoctors);
           }

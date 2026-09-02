@@ -170,7 +170,7 @@ export const HomepageWireframe: React.FC = () => {
                     <Stethoscope className="w-5 h-5 text-[#007E70]" />
                   </div>
                   <div>
-                    <div className="text-[11px] font-bold text-[#0F172A]">Dr. S. Mukherjee</div>
+                    <div className="text-[11px] font-bold text-[#0F172A]">Visiting Physician</div>
                     <div className="text-[9px] text-[#007E70] font-semibold">General Medicine</div>
                     <div className="text-[9px] text-slate-500">Mon - Sat • 10 AM - 2 PM</div>
                   </div>
@@ -180,7 +180,7 @@ export const HomepageWireframe: React.FC = () => {
                     <Stethoscope className="w-5 h-5 text-[#007E70]" />
                   </div>
                   <div>
-                    <div className="text-[11px] font-bold text-[#0F172A]">Dr. A. Banerjee</div>
+                    <div className="text-[11px] font-bold text-[#0F172A]">Specialist Doctor</div>
                     <div className="text-[9px] text-[#007E70] font-semibold">Pediatric Specialist</div>
                     <div className="text-[9px] text-slate-500">Tue, Thu, Sat • 4 PM - 7 PM</div>
                   </div>

@@ -848,7 +848,7 @@ export const MediaLibrary: React.FC = () => {
                   type="text"
                   value={uploadAltText}
                   onChange={(e) => setUploadAltText(e.target.value)}
-                  placeholder="e.g. Dr. Arindam Banerjee - Consultant Physician"
+                  placeholder="e.g. Dr. Debdutta Nayak - Consultant Physician"
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#007E70]/20 focus:border-[#007E70]"
                 />
               </div>
