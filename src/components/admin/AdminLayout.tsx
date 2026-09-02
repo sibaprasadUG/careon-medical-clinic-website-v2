@@ -17,15 +17,36 @@ import { InsuranceManager } from './InsuranceManager';
 import { SectionMediaManager } from './SectionMediaManager';
 import { SEOSettingsManager } from './SEOSettingsManager';
 import { AuditLogViewer } from './AuditLogViewer';
-import { Menu, ShieldAlert, ExternalLink, Stethoscope } from 'lucide-react';
+import { Menu, ExternalLink } from 'lucide-react';
 
 interface AdminLayoutProps {
   onBackToPublic: () => void;
+  initialPath?: string;
+  onNavigatePath?: (path: string) => void;
 }
 
-export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBackToPublic }) => {
-  const { isAuthenticated, currentUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
+function getTabFromPath(path?: string): AdminTab {
+  if (!path) return 'dashboard';
+  const clean = path.replace(/^\/admin\/?/, '').toLowerCase();
+  if (clean === 'doctors') return 'doctors';
+  if (clean === 'services') return 'services';
+  if (clean === 'departments') return 'departments';
+  if (clean === 'insurance') return 'insurance';
+  if (clean === 'section-media') return 'section-media';
+  if (clean === 'media-library' || clean === 'assets' || clean === 'media') return 'media-library';
+  if (clean === 'patient-stories' || clean === 'stories') return 'patient-stories';
+  if (clean === 'gallery') return 'gallery';
+  if (clean === 'faqs') return 'faqs';
+  if (clean === 'appointments') return 'appointments';
+  if (clean === 'website-settings' || clean === 'settings') return 'website-settings';
+  if (clean === 'seo-settings' || clean === 'seo') return 'seo-settings';
+  if (clean === 'audit-logs' || clean === 'logs') return 'audit-logs';
+  return 'dashboard';
+}
+
+export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBackToPublic, initialPath, onNavigatePath }) => {
+  const { isAuthenticated } = useAuth();
+  const [activeTab, setActiveTab] = useState<AdminTab>(() => getTabFromPath(initialPath || (typeof window !== 'undefined' ? window.location.pathname : '')));
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [newAppointmentsCount, setNewAppointmentsCount] = useState<number>(0);
 
@@ -41,6 +62,20 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBackToPublic }) => {
     return () => window.removeEventListener('careon_data_updated', handleUpdate);
   }, []);
 
+  const handleSelectTab = (tab: AdminTab) => {
+    setActiveTab(tab);
+    const subPath = tab === 'dashboard' ? '/admin' : `/admin/${tab}`;
+    if (onNavigatePath) {
+      onNavigatePath(subPath);
+    } else if (typeof window !== 'undefined') {
+      try {
+        window.history.pushState({}, '', subPath);
+      } catch {
+        window.location.hash = subPath;
+      }
+    }
+  };
+
   if (!isAuthenticated) {
     return <AdminLogin onBackToPublic={onBackToPublic} />;
   }
@@ -50,7 +85,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBackToPublic }) => {
       case 'dashboard':
         return (
           <AdminDashboard
-            setActiveTab={setActiveTab}
+            setActiveTab={handleSelectTab}
             onViewPublicWebsite={onBackToPublic}
           />
         );
@@ -83,7 +118,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBackToPublic }) => {
       default:
         return (
           <AdminDashboard
-            setActiveTab={setActiveTab}
+            setActiveTab={handleSelectTab}
             onViewPublicWebsite={onBackToPublic}
           />
         );
@@ -95,7 +130,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBackToPublic }) => {
       {/* Admin Sidebar */}
       <AdminSidebar
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        setActiveTab={handleSelectTab}
         onViewPublicWebsite={onBackToPublic}
         newAppointmentsCount={newAppointmentsCount}
         isOpenMobile={isMobileMenuOpen}
@@ -109,7 +144,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBackToPublic }) => {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsMobileMenuOpen(true)}
-              className="lg:hidden p-2 text-slate-500 hover:text-slate-900 rounded-xl hover:bg-slate-100"
+              className="lg:hidden p-2 text-slate-500 hover:text-slate-900 rounded-xl hover:bg-slate-100 cursor-pointer"
+              aria-label="Toggle Navigation Menu"
             >
               <Menu className="w-5 h-5" />
             </button>
@@ -125,7 +161,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBackToPublic }) => {
           <div className="flex items-center gap-3">
             <button
               onClick={onBackToPublic}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-teal-50 hover:text-[#007E70] text-slate-600 text-xs font-bold rounded-xl border border-slate-200 transition-colors"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-teal-50 hover:text-[#007E70] text-slate-600 text-xs font-bold rounded-xl border border-slate-200 transition-colors cursor-pointer"
             >
               <span>View Public Website</span>
               <ExternalLink className="w-3 h-3" />

@@ -68,6 +68,7 @@ export const DoctorManager: React.FC = () => {
   const [statusConfirm, setStatusConfirm] = useState<{ doctor: Doctor; targetStatus: ContentStatus } | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isMediaPickerOpen, setIsMediaPickerOpen] = useState<boolean>(false);
+  const [doctorToDelete, setDoctorToDelete] = useState<Doctor | null>(null);
 
   // Form Schedule Active Subtab
   const [scheduleSubTab, setScheduleSubTab] = useState<'WEEKLY' | 'CUSTOM' | 'EXCEPTIONS'>('WEEKLY');
@@ -99,16 +100,16 @@ export const DoctorManager: React.FC = () => {
   }>({
     name: '',
     nameBn: '',
-    photoUrl: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=600',
+    photoUrl: '',
     profilePhotoAssetId: '',
     profilePhotoUrl: '',
     profilePhotoAlt: '',
     departmentId: '',
     designation: 'Senior Consultant Physician',
     qualification: 'MBBS, MD',
-    registrationNumber: 'WBMC-',
+    registrationNumber: '',
     shortBio: '',
-    expertiseStr: 'General Health, Preventative Medicine',
+    expertiseStr: '',
     consultationDays: ['Mon', 'Wed', 'Fri'],
     consultationTime: '05:00 PM – 08:30 PM',
     roomNumber: 'Chamber 101',
@@ -339,6 +340,12 @@ export const DoctorManager: React.FC = () => {
     setStatusConfirm(null);
   };
 
+  const handleExecuteDelete = () => {
+    if (!doctorToDelete || !currentUser) return;
+    DataAccessLayer.deleteDoctor(doctorToDelete.id, currentUser);
+    setDoctorToDelete(null);
+  };
+
   const handleToggleFeatured = (doc: Doctor) => {
     if (!currentUser) return;
     try {
@@ -519,7 +526,26 @@ export const DoctorManager: React.FC = () => {
 
       {/* Doctors Table */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs">
-        {filteredDoctors.length === 0 ? (
+        {doctors.length === 0 ? (
+          <div className="p-10 text-center space-y-3">
+            <div className="w-12 h-12 bg-teal-50 text-[#007E70] rounded-2xl flex items-center justify-center mx-auto">
+              <Stethoscope className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-800">Doctor Directory is Empty</h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              No doctor profiles have been added yet. Add your clinical specialists, consultation hours, and department affiliations to display them on the website.
+            </p>
+            <div className="pt-2">
+              <button
+                onClick={handleOpenAdd}
+                className="px-5 py-2.5 bg-[#007E70] hover:bg-[#009282] text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer inline-flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Add First Doctor
+              </button>
+            </div>
+          </div>
+        ) : filteredDoctors.length === 0 ? (
           <div className="p-8 text-center space-y-2">
             <Users className="w-8 h-8 text-slate-300 mx-auto" />
             <h3 className="text-sm font-bold text-slate-700">No doctors match current criteria</h3>
@@ -725,6 +751,14 @@ export const DoctorManager: React.FC = () => {
                               Activate
                             </button>
                           )}
+
+                          <button
+                            onClick={() => setDoctorToDelete(doc)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Delete Doctor"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1766,6 +1800,17 @@ export const DoctorManager: React.FC = () => {
         isDestructive={statusConfirm?.targetStatus !== 'ACTIVE'}
         onConfirm={handleExecuteStatusChange}
         onCancel={() => setStatusConfirm(null)}
+      />
+
+      {/* PERMANENT DELETE CONFIRMATION */}
+      <ConfirmationDialog
+        isOpen={Boolean(doctorToDelete)}
+        title={`Permanently Delete Dr. ${doctorToDelete?.name}?`}
+        message={`Are you sure you want to permanently delete Dr. ${doctorToDelete?.name}? This will remove the doctor from all public listings and admin records immediately.`}
+        confirmLabel="Delete Doctor"
+        isDestructive={true}
+        onConfirm={handleExecuteDelete}
+        onCancel={() => setDoctorToDelete(null)}
       />
     </div>
   );

@@ -35,6 +35,9 @@ export function usePublicData() {
   }, []);
 
   useEffect(() => {
+    // Initial sync with backend persistent store
+    DataAccessLayer.syncWithServer();
+
     const handleDataUpdate = () => {
       refreshPublicData();
     };

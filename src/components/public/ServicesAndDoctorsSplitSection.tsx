@@ -162,66 +162,98 @@ export const ServicesAndDoctorsSplitSection: React.FC<ServicesAndDoctorsSplitSec
               </button>
             </div>
 
-            {/* 3 Doctor Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
-              {displayDoctors.map((doc, idx) => {
-                const dept = departments.find((d) => d.id === doc.departmentId);
-                const ratings = [
-                  { stars: 5.0, count: 120 },
-                  { stars: 4.9, count: 98 },
-                  { stars: 4.9, count: 110 }
-                ];
-                const rating = ratings[idx % ratings.length];
-
-                return (
-                  <div
-                    key={doc.id}
-                    className="bg-white rounded-2xl p-4 border border-slate-200 hover:border-slate-300 hover:shadow-md transition-all duration-200 flex flex-col justify-between text-center"
+            {/* Doctor Cards Grid or Clean Notice */}
+            {displayDoctors.length === 0 ? (
+              <div className="bg-slate-50/70 rounded-2xl p-6 sm:p-8 border border-slate-200/80 text-center space-y-4">
+                <div className="w-12 h-12 rounded-full bg-teal-50 text-[#007E70] flex items-center justify-center mx-auto">
+                  <Stethoscope className="w-6 h-6 stroke-[1.75]" />
+                </div>
+                <div className="space-y-1 max-w-md mx-auto">
+                  <h3 className="text-sm font-bold text-[#0B192C]">
+                    {lang === 'en' ? 'Consultant Roster & Chamber Schedules' : 'ডাক্তারদের চেম্বার ও সময়সূচী'}
+                  </h3>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    {lang === 'en'
+                      ? 'Experienced visiting specialist doctors consult regularly across all major departments. Contact clinic reception for today’s active roster.'
+                      : 'বিভিন্ন বিভাগের অভিজ্ঞ বিশেষজ্ঞ ডাক্তারগণ নিয়মিত চেম্বার করেন। আজকের চেম্বার তালিকা জানতে হেল্পলাইনে যোগাযোগ করুন।'}
+                  </p>
+                </div>
+                <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    onClick={onViewAllDoctors}
+                    className="py-2 px-4 bg-[#0B192C] hover:bg-[#007E70] text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
                   >
-                    {/* Doctor Photo */}
-                    <div className="w-full aspect-[4/4.2] rounded-xl overflow-hidden mb-3 bg-slate-100">
-                      <DoctorPhoto
-                        doctor={doc}
-                        className="w-full h-full object-cover object-top"
-                        containerClassName="w-full h-full relative"
-                      />
-                    </div>
+                    {lang === 'en' ? 'Doctor Directory' : 'ডাক্তারদের তালিকা'}
+                  </button>
+                  <a
+                    href="tel:9933335131"
+                    className="py-2 px-4 bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 text-xs font-bold rounded-xl transition-colors inline-flex items-center gap-1.5"
+                  >
+                    <span>{lang === 'en' ? 'Call: 9933335131' : 'কল: ৯৯৩৩৩৩৫১৩১'}</span>
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
+                {displayDoctors.map((doc, idx) => {
+                  const dept = departments.find((d) => d.id === doc.departmentId);
+                  const ratings = [
+                    { stars: 5.0, count: 120 },
+                    { stars: 4.9, count: 98 },
+                    { stars: 4.9, count: 110 }
+                  ];
+                  const rating = ratings[idx % ratings.length];
 
-                    {/* Doctor Info */}
-                    <div className="space-y-1">
-                      <h3 className="text-xs sm:text-sm font-extrabold text-[#0B192C] line-clamp-1">
-                        {doc.name}
-                      </h3>
-                      <p className="text-[11px] text-slate-500 font-semibold line-clamp-1">
-                        {dept?.name || doc.designation}
-                      </p>
+                  return (
+                    <div
+                      key={doc.id}
+                      className="bg-white rounded-2xl p-4 border border-slate-200 hover:border-slate-300 hover:shadow-md transition-all duration-200 flex flex-col justify-between text-center"
+                    >
+                      {/* Doctor Photo */}
+                      <div className="w-full aspect-[4/4.2] rounded-xl overflow-hidden mb-3 bg-slate-100">
+                        <DoctorPhoto
+                          doctor={doc}
+                          className="w-full h-full object-cover object-top"
+                          containerClassName="w-full h-full relative"
+                        />
+                      </div>
 
-                      {/* Star Rating (Matching Reference) */}
-                      <div className="flex items-center justify-center gap-1 text-amber-500 py-1">
-                        <div className="flex items-center">
-                          {[...Array(5)].map((_, i) => (
-                            <Star key={i} className="w-3 h-3 fill-amber-400 text-amber-400" />
-                          ))}
+                      {/* Doctor Info */}
+                      <div className="space-y-1">
+                        <h3 className="text-xs sm:text-sm font-extrabold text-[#0B192C] line-clamp-1">
+                          {doc.name}
+                        </h3>
+                        <p className="text-[11px] text-slate-500 font-semibold line-clamp-1">
+                          {dept?.name || doc.designation}
+                        </p>
+
+                        {/* Star Rating (Matching Reference) */}
+                        <div className="flex items-center justify-center gap-1 text-amber-500 py-1">
+                          <div className="flex items-center">
+                            {[...Array(5)].map((_, i) => (
+                              <Star key={i} className="w-3 h-3 fill-amber-400 text-amber-400" />
+                            ))}
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-600 ml-1">
+                            {rating.stars} ({rating.count} {lang === 'en' ? 'reviews' : 'মতামত'})
+                          </span>
                         </div>
-                        <span className="text-[10px] font-bold text-slate-600 ml-1">
-                          {rating.stars} ({rating.count} {lang === 'en' ? 'reviews' : 'মতামত'})
-                        </span>
+                      </div>
+
+                      {/* Deep Navy "View Profile" / "Book" CTA Button */}
+                      <div className="pt-3 mt-2 border-t border-slate-100">
+                        <button
+                          onClick={() => onBookDoctor(doc)}
+                          className="w-full py-2 px-3 bg-[#0B192C] hover:bg-[#007E70] text-white text-[11px] font-bold rounded-xl transition-colors cursor-pointer shadow-2xs"
+                        >
+                          {lang === 'en' ? 'View Profile' : 'প্রোফাইল দেখুন'}
+                        </button>
                       </div>
                     </div>
-
-                    {/* Deep Navy "View Profile" / "Book" CTA Button */}
-                    <div className="pt-3 mt-2 border-t border-slate-100">
-                      <button
-                        onClick={() => onBookDoctor(doc)}
-                        className="w-full py-2 px-3 bg-[#0B192C] hover:bg-[#007E70] text-white text-[11px] font-bold rounded-xl transition-colors cursor-pointer shadow-2xs"
-                      >
-                        {lang === 'en' ? 'View Profile' : 'প্রোফাইল দেখুন'}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
         </div>

@@ -30,6 +30,7 @@ import {
   DEFAULT_SEO_SETTINGS,
   DEFAULT_AUDIT_LOGS
 } from '../data/seedData';
+import { PROJECT_ASSETS_MANIFEST } from '../data/assetsManifest';
 
 const STORAGE_KEYS = {
   DEPARTMENTS: 'careon_cms_departments',
@@ -312,6 +313,62 @@ export function generateSlug(text: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+// Helper to retrieve active admin JWT token for backend sync
+function getAdminAuthToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return sessionStorage.getItem('careon_admin_jwt_token') || localStorage.getItem('careon_admin_jwt_token') || null;
+}
+
+// Background sync helpers
+async function syncDoctorToBackend(doctor: Doctor) {
+  const token = getAdminAuthToken();
+  if (!token) return;
+  try {
+    await fetch('/api/doctors', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(doctor)
+    });
+  } catch (err) {
+    console.warn('Doctor backend sync deferred (offline/local mode):', err);
+  }
+}
+
+async function deleteDoctorFromBackend(id: string) {
+  const token = getAdminAuthToken();
+  if (!token) return;
+  try {
+    await fetch(`/api/doctors/${id}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+  } catch (err) {
+    console.warn('Doctor backend delete deferred:', err);
+  }
+}
+
+async function syncAllDoctorsToBackend(doctors: Doctor[]) {
+  const token = getAdminAuthToken();
+  if (!token) return;
+  try {
+    await fetch('/api/data/sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ doctors })
+    });
+  } catch (err) {
+    console.warn('Doctors bulk sync deferred:', err);
+  }
+}
+
 // Audit Logger Helper
 function recordAudit(
   adminUser: AdminUser | null,
@@ -344,7 +401,7 @@ export const DataAccessLayer = {
   // ==========================================
 
   getPublicDoctors(): Doctor[] {
-    const all = loadFromStorage<Doctor[]>(STORAGE_KEYS.DOCTORS, DEFAULT_DOCTORS);
+    const all = loadFromStorage<Doctor[]>(STORAGE_KEYS.DOCTORS, []);
     return all
       .filter((doc) => doc.status === 'ACTIVE')
       .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
@@ -504,7 +561,7 @@ export const DataAccessLayer = {
 
   // --- DOCTORS ---
   getAllDoctors(): Doctor[] {
-    return loadFromStorage<Doctor[]>(STORAGE_KEYS.DOCTORS, DEFAULT_DOCTORS)
+    return loadFromStorage<Doctor[]>(STORAGE_KEYS.DOCTORS, [])
       .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
   },
 
@@ -599,8 +656,35 @@ export const DataAccessLayer = {
       recordAudit(adminUser, 'DOCTOR_CREATED', 'Doctor', doctorToSave.id, doctorToSave.name, `Added new doctor to department ${doctorToSave.departmentId}`);
     }
 
+    // Persist to backend server
+    syncDoctorToBackend(doctorToSave);
+
     notifyDataChange('Doctor');
     return doctorToSave;
+  },
+
+  deleteDoctor(doctorId: string, adminUser: AdminUser): boolean {
+    const doctors = this.getAllDoctors();
+    const docToDelete = doctors.find((d) => d.id === doctorId);
+    if (!docToDelete) return false;
+
+    const updated = doctors.filter((d) => d.id !== doctorId);
+    saveToStorage(STORAGE_KEYS.DOCTORS, updated);
+
+    recordAudit(
+      adminUser,
+      'DOCTOR_DELETED',
+      'Doctor',
+      docToDelete.id,
+      docToDelete.name,
+      `Permanently removed doctor from registry`
+    );
+
+    // Sync deletion to backend server
+    deleteDoctorFromBackend(doctorId);
+
+    notifyDataChange('Doctor');
+    return true;
   },
 
   toggleDoctorStatus(doctorId: string, newStatus: ContentStatus, adminUser: AdminUser) {
@@ -617,6 +701,7 @@ export const DataAccessLayer = {
 
     saveToStorage(STORAGE_KEYS.DOCTORS, doctors);
     recordAudit(adminUser, `DOCTOR_STATUS_${newStatus}`, 'Doctor', doc.id, doc.name, `Status set to ${newStatus}`);
+    syncAllDoctorsToBackend(doctors);
     notifyDataChange('Doctor');
   },
 
@@ -633,6 +718,7 @@ export const DataAccessLayer = {
     doc.updatedAt = new Date().toISOString();
     saveToStorage(STORAGE_KEYS.DOCTORS, doctors);
     recordAudit(adminUser, doc.featured ? 'DOCTOR_FEATURED' : 'DOCTOR_UNFEATURED', 'Doctor', doc.id, doc.name, `Featured status changed`);
+    syncAllDoctorsToBackend(doctors);
     notifyDataChange('Doctor');
   },
 
@@ -649,6 +735,7 @@ export const DataAccessLayer = {
 
     saveToStorage(STORAGE_KEYS.DOCTORS, updated);
     recordAudit(adminUser, 'DOCTORS_REORDERED', 'Doctor', 'all', 'Doctor Directory', 'Updated display orders');
+    syncAllDoctorsToBackend(updated);
     notifyDataChange('Doctor');
   },
 
@@ -1371,7 +1458,27 @@ export const DataAccessLayer = {
 
   // --- MEDIA ASSETS ---
   getAllMediaAssets(): MediaAsset[] {
-    return loadFromStorage<MediaAsset[]>(STORAGE_KEYS.MEDIA_ASSETS, DEFAULT_MEDIA_ASSETS)
+    const stored = loadFromStorage<MediaAsset[]>(STORAGE_KEYS.MEDIA_ASSETS, DEFAULT_MEDIA_ASSETS);
+    
+    // Merge with Project Assets Manifest avoiding duplicate IDs or URLs
+    const assetMap = new Map<string, MediaAsset>();
+    
+    // 1. Seed & project assets manifest
+    PROJECT_ASSETS_MANIFEST.forEach((a) => {
+      assetMap.set(a.id, a);
+      if (a.storageKey) assetMap.set(a.storageKey, a);
+    });
+    
+    DEFAULT_MEDIA_ASSETS.forEach((a) => {
+      assetMap.set(a.id, a);
+    });
+
+    // 2. User-uploaded and edited assets
+    stored.forEach((a) => {
+      assetMap.set(a.id, a);
+    });
+
+    return Array.from(new Set(assetMap.values()))
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   },
 
@@ -1670,10 +1777,147 @@ export const DataAccessLayer = {
     return loadFromStorage<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, DEFAULT_AUDIT_LOGS);
   },
 
-  // Reset to verified demo seeds
+  // --- AUTOMATIC RECOVERY OF REAL DOCTOR RECORDS ---
+  autoRecoverClientDoctorRecords(): Doctor[] {
+    if (typeof window === 'undefined' || !window.localStorage) return [];
+
+    try {
+      const DEMO_NAMES = [
+        'Dr. Arindam Banerjee',
+        'Dr. Sarmistha Mukherjee',
+        'Dr. Debabrata Roy',
+        'Dr. Nandini Sengupta'
+      ];
+      const DEMO_IDS = ['doc-01', 'doc-02', 'doc-03', 'doc-04'];
+
+      const isRealDoc = (doc: any): boolean => {
+        if (!doc || typeof doc !== 'object' || !doc.name || typeof doc.name !== 'string') return false;
+        const name = doc.name.trim();
+        if (DEMO_NAMES.includes(name) || DEMO_IDS.includes(doc.id)) return false;
+        if (doc.serviceType || doc.category === 'Preventive' || doc.category === 'Diagnostic' || doc.category === 'Specialized' || doc.category === 'Consultation') return false;
+        if (doc.id && (doc.id.startsWith('srv-') || doc.id.startsWith('dept-') || doc.id.startsWith('gal-') || doc.id.startsWith('faq-') || doc.id.startsWith('ins-') || doc.id.startsWith('asset-') || doc.id.startsWith('media-') || doc.id.startsWith('apt-'))) return false;
+        if (!doc.departmentId) return false;
+        return Boolean(doc.qualification || doc.designation);
+      };
+
+      const recoveredDoctors: Doctor[] = [];
+      const keysToCheck = [
+        STORAGE_KEYS.DOCTORS,
+        'careon_cms_doctors',
+        'careon_doctors',
+        'careon_doctors_backup',
+        'careon_custom_doctors',
+        'careon_admin_doctors',
+        'doctors'
+      ];
+
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (
+          k &&
+          !keysToCheck.includes(k) &&
+          k.toLowerCase().includes('doc') &&
+          !k.toLowerCase().includes('service') &&
+          !k.toLowerCase().includes('dept') &&
+          !k.toLowerCase().includes('gallery') &&
+          !k.toLowerCase().includes('faq') &&
+          !k.toLowerCase().includes('setting') &&
+          !k.toLowerCase().includes('seo') &&
+          !k.toLowerCase().includes('log') &&
+          !k.toLowerCase().includes('asset') &&
+          !k.toLowerCase().includes('partner')
+        ) {
+          keysToCheck.push(k);
+        }
+      }
+
+      for (const k of keysToCheck) {
+        try {
+          const item = localStorage.getItem(k);
+          if (!item) continue;
+          const parsed = JSON.parse(item);
+          if (Array.isArray(parsed)) {
+            for (const doc of parsed) {
+              if (isRealDoc(doc)) {
+                if (!recoveredDoctors.some((rd) => rd.id === doc.id || rd.name.trim().toLowerCase() === doc.name.trim().toLowerCase())) {
+                  recoveredDoctors.push(doc);
+                }
+              }
+            }
+          }
+        } catch {
+          // Continue
+        }
+      }
+
+      if (recoveredDoctors.length > 0) {
+        saveToStorage(STORAGE_KEYS.DOCTORS, recoveredDoctors);
+        recoveredDoctors.forEach((doc) => syncDoctorToBackend(doc));
+        return recoveredDoctors;
+      } else {
+        const currentInStorage = loadFromStorage<Doctor[]>(STORAGE_KEYS.DOCTORS, []);
+        const realOnly = currentInStorage.filter(isRealDoc);
+        if (realOnly.length !== currentInStorage.length) {
+          saveToStorage(STORAGE_KEYS.DOCTORS, realOnly);
+        }
+        return realOnly;
+      }
+    } catch {
+      return [];
+    }
+  },
+
+  // --- SERVER & DATA SYNCHRONIZATION ---
+  async syncWithServer() {
+    try {
+      this.autoRecoverClientDoctorRecords();
+
+      const res = await fetch('/api/data');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          if (Array.isArray(data.doctors)) {
+            const DEMO_NAMES = [
+              'Dr. Arindam Banerjee',
+              'Dr. Sarmistha Mukherjee',
+              'Dr. Debabrata Roy',
+              'Dr. Nandini Sengupta'
+            ];
+            const DEMO_IDS = ['doc-01', 'doc-02', 'doc-03', 'doc-04'];
+            const cleanDoctors = data.doctors.filter(
+              (d: any) =>
+                d &&
+                d.name &&
+                typeof d.name === 'string' &&
+                !DEMO_NAMES.includes(d.name.trim()) &&
+                !DEMO_IDS.includes(d.id) &&
+                !d.serviceType &&
+                !d.category &&
+                d.departmentId &&
+                (d.qualification || d.designation)
+            );
+            saveToStorage(STORAGE_KEYS.DOCTORS, cleanDoctors);
+          }
+          if (Array.isArray(data.departments) && data.departments.length > 0) {
+            saveToStorage(STORAGE_KEYS.DEPARTMENTS, data.departments);
+          }
+          if (Array.isArray(data.services) && data.services.length > 0) {
+            saveToStorage(STORAGE_KEYS.SERVICES, data.services);
+          }
+          if (data.settings && typeof data.settings === 'object') {
+            saveToStorage(STORAGE_KEYS.SETTINGS, data.settings);
+          }
+          notifyDataChange('ServerSync');
+        }
+      }
+    } catch {
+      // Local mode fallback
+    }
+  },
+
+  // Reset to verified demo seeds (Preserves doctor registry)
   resetToDefaults(adminUser: AdminUser) {
     saveToStorage(STORAGE_KEYS.DEPARTMENTS, DEFAULT_DEPARTMENTS);
-    saveToStorage(STORAGE_KEYS.DOCTORS, DEFAULT_DOCTORS);
     saveToStorage(STORAGE_KEYS.SERVICES, DEFAULT_SERVICES);
     saveToStorage(STORAGE_KEYS.PATIENT_STORIES, DEFAULT_PATIENT_STORIES);
     saveToStorage(STORAGE_KEYS.GALLERY, DEFAULT_GALLERY);
