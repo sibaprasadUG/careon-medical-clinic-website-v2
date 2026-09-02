@@ -67,18 +67,18 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   }, []);
 
   const navItems: { id: AdminTab; label: string; icon: React.FC<{ className?: string }>; badge?: number; minRole?: AdminRole }[] = [
-    { id: 'dashboard', label: 'Control Dashboard', icon: LayoutDashboard },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'doctors', label: 'Doctors', icon: Users },
-    { id: 'services', label: 'Services', icon: Activity },
-    { id: 'departments', label: 'Departments', icon: Layers },
-    { id: 'insurance', label: 'Insurance Plans', icon: ShieldCheck },
-    { id: 'section-media', label: 'Hero & Section Images', icon: Sliders },
     { id: 'media-library', label: 'Media Library', icon: ImageIcon },
-    { id: 'patient-stories', label: 'Patient Stories', icon: HeartHandshake },
+    { id: 'departments', label: 'Departments', icon: Layers },
+    { id: 'services', label: 'Services', icon: Activity },
+    { id: 'website-settings', label: 'Clinic Settings', icon: Settings },
+    { id: 'appointments', label: 'Appointments', icon: CalendarCheck, badge: newAppointmentsCount },
+    { id: 'section-media', label: 'Section Images', icon: Sliders },
     { id: 'gallery', label: 'Gallery', icon: ImageIcon },
+    { id: 'patient-stories', label: 'Patient Stories', icon: HeartHandshake },
     { id: 'faqs', label: 'FAQs', icon: HelpCircle },
-    { id: 'appointments', label: 'Appointment Requests', icon: CalendarCheck, badge: newAppointmentsCount },
-    { id: 'website-settings', label: 'Website Settings', icon: Settings },
+    { id: 'insurance', label: 'Insurance Plans', icon: ShieldCheck },
     { id: 'seo-settings', label: 'SEO Settings', icon: Globe },
     { id: 'audit-logs', label: 'Audit Logs', icon: ScrollText }
   ];

@@ -591,13 +591,39 @@ export const DataAccessLayer = {
         (doctorData.profilePhotoUrl !== undefined && doctorData.profilePhotoUrl !== existing.profilePhotoUrl) ||
         (doctorData.photoUrl !== undefined && doctorData.photoUrl !== existing.photoUrl);
 
+      // Derive human-readable consultation schedule summary if schedules array is present
+      let derivedDays = doctorData.consultationDays || existing.consultationDays || [];
+      let derivedTime = doctorData.consultationTime || existing.consultationTime || '';
+      if (Array.isArray(doctorData.schedules) && doctorData.schedules.length > 0) {
+        derivedDays = Array.from(new Set(doctorData.schedules.map((s) => s.day.slice(0, 3))));
+        derivedTime = doctorData.schedules.map((s) => `${s.day.slice(0, 3)} ${s.startTime} – ${s.endTime}`).join('; ');
+      }
+
+      const derivedChamber = doctorData.chamberId === 'Other' && doctorData.chamberCustom
+        ? doctorData.chamberCustom
+        : (doctorData.chamberId || doctorData.roomNumber || existing.roomNumber || 'CareOn Medical Clinic');
+
+      const resolvedStatus = doctorData.active === false ? 'INACTIVE' : (doctorData.status || existing.status || 'ACTIVE');
+
       doctorToSave = {
         ...existing,
         ...doctorData,
         photoUrl: targetPhotoUrl,
         profilePhotoUrl: targetPhotoUrl,
-        profilePhotoAssetId: doctorData.profilePhotoAssetId !== undefined ? doctorData.profilePhotoAssetId : existing.profilePhotoAssetId,
+        photoAssetId: doctorData.photoAssetId || doctorData.profilePhotoAssetId || existing.photoAssetId || existing.profilePhotoAssetId || '',
+        profilePhotoAssetId: doctorData.photoAssetId || doctorData.profilePhotoAssetId || existing.photoAssetId || existing.profilePhotoAssetId || '',
         profilePhotoAlt: doctorData.profilePhotoAlt !== undefined ? doctorData.profilePhotoAlt : existing.profilePhotoAlt,
+        schedules: doctorData.schedules !== undefined ? doctorData.schedules : existing.schedules,
+        specialtyId: doctorData.specialtyId !== undefined ? doctorData.specialtyId : existing.specialtyId,
+        chamberId: doctorData.chamberId !== undefined ? doctorData.chamberId : existing.chamberId,
+        chamberCustom: doctorData.chamberCustom !== undefined ? doctorData.chamberCustom : existing.chamberCustom,
+        serviceIds: doctorData.serviceIds !== undefined ? doctorData.serviceIds : existing.serviceIds,
+        active: resolvedStatus === 'ACTIVE',
+        published: resolvedStatus === 'ACTIVE',
+        status: resolvedStatus,
+        consultationDays: derivedDays,
+        consultationTime: derivedTime,
+        roomNumber: derivedChamber,
         weeklySchedule: doctorData.weeklySchedule !== undefined ? doctorData.weeklySchedule : existing.weeklySchedule,
         customSchedules: doctorData.customSchedules !== undefined ? doctorData.customSchedules : existing.customSchedules,
         scheduleExceptions: doctorData.scheduleExceptions !== undefined ? doctorData.scheduleExceptions : existing.scheduleExceptions,
@@ -623,6 +649,20 @@ export const DataAccessLayer = {
     } else {
       const maxOrder = doctors.reduce((max, d) => Math.max(max, d.displayOrder || 0), 0);
       const activePhoto = doctorData.profilePhotoUrl || doctorData.photoUrl || '';
+      
+      let derivedDays = doctorData.consultationDays || [];
+      let derivedTime = doctorData.consultationTime || '10:30 AM – 11:30 AM';
+      if (Array.isArray(doctorData.schedules) && doctorData.schedules.length > 0) {
+        derivedDays = Array.from(new Set(doctorData.schedules.map((s) => s.day.slice(0, 3))));
+        derivedTime = doctorData.schedules.map((s) => `${s.day.slice(0, 3)} ${s.startTime} – ${s.endTime}`).join('; ');
+      }
+
+      const derivedChamber = doctorData.chamberId === 'Other' && doctorData.chamberCustom
+        ? doctorData.chamberCustom
+        : (doctorData.chamberId || doctorData.roomNumber || 'CareOn Medical Clinic');
+
+      const resolvedStatus = doctorData.active === false ? 'INACTIVE' : (doctorData.status || 'ACTIVE');
+
       doctorToSave = {
         id: `doc-${Date.now()}`,
         name: doctorData.name,
@@ -630,24 +670,32 @@ export const DataAccessLayer = {
         slug: generateSlug(doctorData.name),
         photoUrl: activePhoto,
         profilePhotoUrl: activePhoto,
-        profilePhotoAssetId: doctorData.profilePhotoAssetId || '',
+        photoAssetId: doctorData.photoAssetId || doctorData.profilePhotoAssetId || '',
+        profilePhotoAssetId: doctorData.photoAssetId || doctorData.profilePhotoAssetId || '',
         profilePhotoAlt: doctorData.profilePhotoAlt || `Dr. ${doctorData.name} - CareOn Medical Clinic`,
         departmentId: doctorData.departmentId,
-        designation: doctorData.designation || 'Consultant Specialist',
+        specialtyId: doctorData.specialtyId || '',
+        designation: doctorData.designation || 'Consultant',
         qualification: doctorData.qualification || 'MBBS',
         registrationNumber: doctorData.registrationNumber || '',
         shortBio: doctorData.shortBio || '',
         areasOfExpertise: doctorData.areasOfExpertise || [],
-        consultationDays: doctorData.consultationDays || ['Mon', 'Wed', 'Fri'],
-        consultationTime: doctorData.consultationTime || '05:00 PM – 08:00 PM',
-        roomNumber: doctorData.roomNumber || 'Chamber 101',
+        schedules: doctorData.schedules || [],
+        chamberId: doctorData.chamberId || 'CareOn Medical Clinic',
+        chamberCustom: doctorData.chamberCustom || '',
+        serviceIds: doctorData.serviceIds || [],
+        active: resolvedStatus === 'ACTIVE',
+        published: resolvedStatus === 'ACTIVE',
+        consultationDays: derivedDays.length > 0 ? derivedDays : ['Sat'],
+        consultationTime: derivedTime,
+        roomNumber: derivedChamber,
         weeklySchedule: doctorData.weeklySchedule,
         customSchedules: doctorData.customSchedules,
         scheduleExceptions: doctorData.scheduleExceptions,
         appointmentEnabled: doctorData.appointmentEnabled !== undefined ? doctorData.appointmentEnabled : true,
         featured: Boolean(doctorData.featured),
         displayOrder: doctorData.displayOrder || maxOrder + 1,
-        status: doctorData.status || 'ACTIVE',
+        status: resolvedStatus,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };

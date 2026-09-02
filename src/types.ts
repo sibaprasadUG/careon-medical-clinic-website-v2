@@ -185,6 +185,13 @@ export interface DoctorScheduleException {
   note?: string;
 }
 
+export interface DoctorScheduleItem {
+  id?: string;
+  day: DayOfWeek;
+  startTime: string;
+  endTime: string;
+}
+
 // Doctor Model
 export interface Doctor {
   id: string;
@@ -194,21 +201,29 @@ export interface Doctor {
   photoUrl: string;
   profilePhotoUrl?: string;
   profilePhotoAssetId?: string;
+  photoAssetId?: string;
   profilePhotoAlt?: string;
   departmentId: string;
+  specialtyId?: string;
   designation: string;
   qualification: string;
   registrationNumber?: string;
-  shortBio: string;
-  areasOfExpertise: string[];
-  consultationDays: string[];
-  consultationTime: string;
+  schedules?: DoctorScheduleItem[];
+  chamberId?: string;
+  chamberCustom?: string;
+  serviceIds?: string[];
+  active?: boolean;
+  published?: boolean;
+  shortBio?: string;
+  areasOfExpertise?: string[];
+  consultationDays?: string[];
+  consultationTime?: string;
   roomNumber?: string;
   weeklySchedule?: DoctorWeeklyScheduleSlot[];
   customSchedules?: DoctorCustomSchedule[];
   scheduleExceptions?: DoctorScheduleException[];
-  appointmentEnabled: boolean;
-  featured: boolean;
+  appointmentEnabled?: boolean;
+  featured?: boolean;
   displayOrder: number;
   status: ContentStatus;
   createdAt: string;

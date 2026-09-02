@@ -10,6 +10,7 @@ import { AboutPage } from './components/public/AboutPage';
 import { FAQsPage } from './components/public/FAQsPage';
 import { ContactPage } from './components/public/ContactPage';
 import { AppointmentModal } from './components/public/AppointmentModal';
+import { FloatingWhatsAppButton } from './components/public/FloatingWhatsAppButton';
 import { AdminLayout } from './components/admin/AdminLayout';
 import { usePublicData } from './lib/usePublicData';
 import { useDynamicFavicon } from './components/common/CareOnMedia';
@@ -236,6 +237,11 @@ export default function App() {
           departments={departments}
           prefill={bookingPrefill}
           lang={lang}
+        />
+
+        {/* Global Floating WhatsApp Contact Action */}
+        <FloatingWhatsAppButton
+          phoneNumber={settings.socialLinks?.whatsapp?.url ? undefined : '919933335131'}
         />
       </div>
     </AuthProvider>
