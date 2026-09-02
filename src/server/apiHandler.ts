@@ -253,6 +253,10 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
     return jsonResponse(200, { ok: true });
   }
 
+  if (cleanPath === '/health' || cleanPath === '') {
+    return jsonResponse(200, { status: 'ok', time: new Date().toISOString() });
+  }
+
   // --- AUTH ENDPOINTS ---
   if (cleanPath === '/auth/login' && req.method === 'POST') {
     const { email, password } = req.body || {};
