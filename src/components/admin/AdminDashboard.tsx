@@ -112,10 +112,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <button
             onClick={() => setIsResetConfirmOpen(true)}
             className="px-4 py-2.5 bg-teal-500/20 hover:bg-teal-500/30 text-teal-200 text-xs font-semibold rounded-xl border border-teal-400/30 transition-colors flex items-center gap-2"
-            title="Reset to verified baseline seed data"
+            title="Reset settings, departments, and services to verified defaults"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset Demo Data</span>
+            <span>Reset System Defaults</span>
           </button>
         </div>
       </div>

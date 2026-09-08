@@ -31,6 +31,7 @@ import {
   DEFAULT_AUDIT_LOGS
 } from '../data/seedData';
 import { PROJECT_ASSETS_MANIFEST } from '../data/assetsManifest';
+import { apiClient } from './apiClient';
 
 const STORAGE_KEYS = {
   DEPARTMENTS: 'careon_cms_departments',
@@ -313,6 +314,10 @@ export function generateSlug(text: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+// Runtime in-memory doctor cache to guarantee sync across all components
+let runtimeDoctorCache: Doctor[] | null = null;
+let isFetchingDoctors = false;
+
 // Helper to retrieve active admin JWT token for backend sync
 function getAdminAuthToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -324,14 +329,11 @@ async function syncDoctorToBackend(doctor: Doctor) {
   const token = getAdminAuthToken();
   if (!token) return;
   try {
-    await fetch('/api/doctors', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify(doctor)
-    });
+    if (doctor.id && DataAccessLayer.getAllDoctors().some(d => d.id === doctor.id)) {
+      await apiClient.updateDoctor(doctor.id, doctor);
+    } else {
+      await apiClient.createDoctor(doctor);
+    }
   } catch (err) {
     console.warn('Doctor backend sync deferred (offline/local mode):', err);
   }
@@ -341,12 +343,7 @@ async function deleteDoctorFromBackend(id: string) {
   const token = getAdminAuthToken();
   if (!token) return;
   try {
-    await fetch(`/api/doctors/${id}`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
+    await apiClient.deleteDoctor(id);
   } catch (err) {
     console.warn('Doctor backend delete deferred:', err);
   }
@@ -356,14 +353,7 @@ async function syncAllDoctorsToBackend(doctors: Doctor[]) {
   const token = getAdminAuthToken();
   if (!token) return;
   try {
-    await fetch('/api/data/sync', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({ doctors })
-    });
+    await apiClient.syncFullData({ doctors });
   } catch (err) {
     console.warn('Doctors bulk sync deferred:', err);
   }
@@ -401,9 +391,12 @@ export const DataAccessLayer = {
   // ==========================================
 
   getPublicDoctors(): Doctor[] {
-    const all = loadFromStorage<Doctor[]>(STORAGE_KEYS.DOCTORS, []);
+    if (!runtimeDoctorCache && !isFetchingDoctors && typeof window !== 'undefined') {
+      DataAccessLayer.fetchDoctorsFromApi().catch(() => {});
+    }
+    const all = runtimeDoctorCache || loadFromStorage<Doctor[]>(STORAGE_KEYS.DOCTORS, []);
     return all
-      .filter((doc) => doc.status === 'ACTIVE')
+      .filter((doc) => doc.status === 'ACTIVE' && doc.active !== false)
       .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
   },
 
@@ -561,8 +554,30 @@ export const DataAccessLayer = {
 
   // --- DOCTORS ---
   getAllDoctors(): Doctor[] {
-    return loadFromStorage<Doctor[]>(STORAGE_KEYS.DOCTORS, [])
-      .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+    if (!runtimeDoctorCache && !isFetchingDoctors && typeof window !== 'undefined') {
+      DataAccessLayer.fetchDoctorsFromApi().catch(() => {});
+    }
+    const all = runtimeDoctorCache || loadFromStorage<Doctor[]>(STORAGE_KEYS.DOCTORS, []);
+    return all.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+  },
+
+  async fetchDoctorsFromApi(): Promise<Doctor[]> {
+    if (isFetchingDoctors) {
+      return runtimeDoctorCache || loadFromStorage<Doctor[]>(STORAGE_KEYS.DOCTORS, []);
+    }
+    isFetchingDoctors = true;
+    try {
+      const serverDoctors = await apiClient.getDoctors();
+      runtimeDoctorCache = serverDoctors;
+      saveToStorage(STORAGE_KEYS.DOCTORS, serverDoctors);
+      notifyDataChange('Doctor');
+      return serverDoctors;
+    } catch (err) {
+      console.warn('Could not fetch doctors from API, using cached data:', err);
+      return runtimeDoctorCache || loadFromStorage<Doctor[]>(STORAGE_KEYS.DOCTORS, []);
+    } finally {
+      isFetchingDoctors = false;
+    }
   },
 
   getDoctorById(id: string): Doctor | undefined {
@@ -571,6 +586,39 @@ export const DataAccessLayer = {
 
   getDoctorBySlug(slug: string): Doctor | undefined {
     return this.getAllDoctors().find((d) => d.slug === slug);
+  },
+
+  async saveDoctorAsync(
+    doctorData: Partial<Doctor> & { name: string; departmentId: string },
+    adminUser: AdminUser
+  ): Promise<Doctor> {
+    const isEdit = Boolean(doctorData.id && this.getAllDoctors().some((d) => d.id === doctorData.id));
+    let persisted: Doctor;
+
+    if (isEdit && doctorData.id) {
+      persisted = await apiClient.updateDoctor(doctorData.id, doctorData);
+    } else {
+      persisted = await apiClient.createDoctor(doctorData);
+    }
+
+    // Update in-memory and local cache
+    const current = this.getAllDoctors().filter((d) => d.id !== persisted.id);
+    current.push(persisted);
+    current.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+    runtimeDoctorCache = current;
+    saveToStorage(STORAGE_KEYS.DOCTORS, current);
+
+    recordAudit(
+      adminUser,
+      isEdit ? 'DOCTOR_UPDATED' : 'DOCTOR_CREATED',
+      'Doctor',
+      persisted.id,
+      persisted.name,
+      isEdit ? 'Updated doctor in production database' : 'Created doctor in production database'
+    );
+
+    notifyDataChange('Doctor');
+    return persisted;
   },
 
   saveDoctor(doctorData: Partial<Doctor> & { name: string; departmentId: string }, adminUser: AdminUser): Doctor {
@@ -631,6 +679,7 @@ export const DataAccessLayer = {
         updatedAt: new Date().toISOString()
       };
       const updatedList = doctors.map((d) => (d.id === doctorToSave.id ? doctorToSave : d));
+      runtimeDoctorCache = updatedList;
       saveToStorage(STORAGE_KEYS.DOCTORS, updatedList);
       recordAudit(adminUser, 'DOCTOR_UPDATED', 'Doctor', doctorToSave.id, doctorToSave.name, `Updated doctor details and consultation schedule.`);
 
@@ -700,15 +749,37 @@ export const DataAccessLayer = {
         updatedAt: new Date().toISOString()
       };
       const updatedList = [...doctors, doctorToSave];
+      runtimeDoctorCache = updatedList;
       saveToStorage(STORAGE_KEYS.DOCTORS, updatedList);
       recordAudit(adminUser, 'DOCTOR_CREATED', 'Doctor', doctorToSave.id, doctorToSave.name, `Added new doctor to department ${doctorToSave.departmentId}`);
     }
 
-    // Persist to backend server
-    syncDoctorToBackend(doctorToSave);
+    // Persist asynchronously to backend server
+    this.saveDoctorAsync(doctorToSave, adminUser).catch((err) => {
+      console.warn('Asynchronous doctor persistence background warning:', err);
+    });
 
     notifyDataChange('Doctor');
     return doctorToSave;
+  },
+
+  async deleteDoctorAsync(doctorId: string, adminUser: AdminUser): Promise<boolean> {
+    await apiClient.deleteDoctor(doctorId);
+    const updated = this.getAllDoctors().filter((d) => d.id !== doctorId);
+    runtimeDoctorCache = updated;
+    saveToStorage(STORAGE_KEYS.DOCTORS, updated);
+
+    recordAudit(
+      adminUser,
+      'DOCTOR_DELETED',
+      'Doctor',
+      doctorId,
+      'Doctor',
+      `Permanently removed doctor from registry`
+    );
+
+    notifyDataChange('Doctor');
+    return true;
   },
 
   deleteDoctor(doctorId: string, adminUser: AdminUser): boolean {
@@ -717,6 +788,7 @@ export const DataAccessLayer = {
     if (!docToDelete) return false;
 
     const updated = doctors.filter((d) => d.id !== doctorId);
+    runtimeDoctorCache = updated;
     saveToStorage(STORAGE_KEYS.DOCTORS, updated);
 
     recordAudit(
@@ -729,7 +801,9 @@ export const DataAccessLayer = {
     );
 
     // Sync deletion to backend server
-    deleteDoctorFromBackend(doctorId);
+    this.deleteDoctorAsync(doctorId, adminUser).catch((err) => {
+      console.warn('Asynchronous doctor deletion background warning:', err);
+    });
 
     notifyDataChange('Doctor');
     return true;
@@ -1825,14 +1899,13 @@ export const DataAccessLayer = {
     return loadFromStorage<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, DEFAULT_AUDIT_LOGS);
   },
 
-  // --- AUTOMATIC PURGE OF LEGACY DOCTOR KEYS & STORAGE VALIDATION ---
+  // --- AUTOMATIC PURGE OF OBSOLETE LEGACY KEYS & STORAGE VALIDATION ---
   autoRecoverClientDoctorRecords(): Doctor[] {
     if (typeof window === 'undefined' || !window.localStorage) return [];
 
     try {
-      // Remove legacy keys to avoid resurrecting deleted doctors
+      // Remove only obsolete deprecated keys to avoid resurrecting demo doctors
       const legacyKeys = [
-        'careon_cms_doctors',
         'careon_doctors',
         'careon_doctors_backup',
         'careon_custom_doctors',
@@ -1875,45 +1948,41 @@ export const DataAccessLayer = {
     try {
       this.autoRecoverClientDoctorRecords();
 
-      const res = await fetch('/api/data');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          if (Array.isArray(data.doctors)) {
-            const DEMO_NAMES = [
-              'Dr. Arindam Banerjee',
-              'Dr. Sarmistha Mukherjee',
-              'Dr. Debabrata Roy',
-              'Dr. Nandini Sengupta'
-            ];
-            const DEMO_IDS = ['doc-01', 'doc-02', 'doc-03', 'doc-04'];
-            const cleanDoctors = data.doctors.filter(
-              (d: any) =>
-                d &&
-                d.name &&
-                typeof d.name === 'string' &&
-                !DEMO_NAMES.includes(d.name.trim()) &&
-                !DEMO_IDS.includes(d.id) &&
-                !d.serviceType &&
-                !d.category &&
-                d.departmentId
-            );
-            saveToStorage(STORAGE_KEYS.DOCTORS, cleanDoctors);
-          }
-          if (Array.isArray(data.departments) && data.departments.length > 0) {
-            saveToStorage(STORAGE_KEYS.DEPARTMENTS, data.departments);
-          }
-          if (Array.isArray(data.services) && data.services.length > 0) {
-            saveToStorage(STORAGE_KEYS.SERVICES, data.services);
-          }
-          if (data.settings && typeof data.settings === 'object') {
-            saveToStorage(STORAGE_KEYS.SETTINGS, data.settings);
-          }
-          notifyDataChange('ServerSync');
-        }
+      const data = await apiClient.getAllData();
+      if (data && Array.isArray(data.doctors)) {
+        const DEMO_NAMES = [
+          'Dr. Arindam Banerjee',
+          'Dr. Sarmistha Mukherjee',
+          'Dr. Debabrata Roy',
+          'Dr. Nandini Sengupta'
+        ];
+        const DEMO_IDS = ['doc-01', 'doc-02', 'doc-03', 'doc-04'];
+        const cleanDoctors = data.doctors.filter(
+          (d: any) =>
+            d &&
+            d.name &&
+            typeof d.name === 'string' &&
+            !DEMO_NAMES.includes(d.name.trim()) &&
+            !DEMO_IDS.includes(d.id) &&
+            !d.serviceType &&
+            !d.category &&
+            d.departmentId
+        );
+        runtimeDoctorCache = cleanDoctors;
+        saveToStorage(STORAGE_KEYS.DOCTORS, cleanDoctors);
       }
-    } catch {
-      // Local mode fallback
+      if (Array.isArray(data.departments) && data.departments.length > 0) {
+        saveToStorage(STORAGE_KEYS.DEPARTMENTS, data.departments);
+      }
+      if (Array.isArray(data.services) && data.services.length > 0) {
+        saveToStorage(STORAGE_KEYS.SERVICES, data.services);
+      }
+      if (data.settings && typeof data.settings === 'object') {
+        saveToStorage(STORAGE_KEYS.SETTINGS, data.settings);
+      }
+      notifyDataChange('ServerSync');
+    } catch (err) {
+      console.warn('Production server sync note:', err);
     }
   },
 

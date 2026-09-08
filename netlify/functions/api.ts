@@ -10,10 +10,13 @@ export const handler = async (event: any, context: any) => {
     }
   }
 
-  // Normalize path from Netlify
+  // Normalize path from Netlify routing
   let path = event.path || '';
   if (path.startsWith('/.netlify/functions/api')) {
     path = path.replace('/.netlify/functions/api', '');
+  }
+  if (!path.startsWith('/')) {
+    path = '/' + path;
   }
 
   const req: ApiRequest = {
@@ -31,8 +34,8 @@ export const handler = async (event: any, context: any) => {
     headers: {
       ...response.headers,
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS'
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
     },
     body: response.body
   };

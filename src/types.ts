@@ -257,6 +257,7 @@ export interface Service {
   sampleTypeBn?: string;
   includedParameters?: string[];
   includedParametersBn?: string[];
+  price?: number;
   bookingEnabled: boolean;
   featured: boolean;
   displayOrder: number;

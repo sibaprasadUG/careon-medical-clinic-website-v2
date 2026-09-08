@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { DataAccessLayer } from '../../lib/dal';
+import { apiClient } from '../../lib/apiClient';
 import { useAuth } from '../../lib/authContext';
 import { Doctor, ContentStatus } from '../../types';
 import { MASTER_DEPARTMENTS } from '../../data/medicalMasters';
@@ -18,7 +19,12 @@ import {
   Clock,
   MapPin,
   Stethoscope,
-  Filter
+  Filter,
+  RefreshCw,
+  Server,
+  AlertCircle,
+  Copy,
+  Check
 } from 'lucide-react';
 
 export const DoctorManager: React.FC = () => {
@@ -27,19 +33,67 @@ export const DoctorManager: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [syncStatus, setSyncStatus] = useState<{ message: string; type: 'success' | 'error' | 'idle' }>({
+    message: '',
+    type: 'idle'
+  });
+  const [dbHealth, setDbHealth] = useState<{
+    connected?: boolean;
+    permissionsGranted?: boolean;
+    tablesReady?: boolean;
+    sqlGrantScript?: string;
+    doctorsCount?: number;
+    error?: string;
+  } | null>(null);
+  const [copiedSql, setCopiedSql] = useState<boolean>(false);
 
   // Modal states
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
   const [doctorToEdit, setDoctorToEdit] = useState<Partial<Doctor> | null>(null);
   const [doctorToDelete, setDoctorToDelete] = useState<Doctor | null>(null);
 
-  const loadDoctors = () => {
-    setDoctors(DataAccessLayer.getAllDoctors());
+  const checkHealthStatus = async () => {
+    try {
+      const health = await apiClient.checkHealth();
+      if (health?.database) {
+        setDbHealth(health.database);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const loadDoctors = async (forceApiFetch = false) => {
+    try {
+      if (forceApiFetch) {
+        setIsLoading(true);
+        checkHealthStatus();
+        const fetched = await DataAccessLayer.fetchDoctorsFromApi();
+        setDoctors(fetched);
+        setSyncStatus({ message: `Synchronized ${fetched.length} doctor(s) from Production API`, type: 'success' });
+      } else {
+        const local = DataAccessLayer.getAllDoctors();
+        setDoctors(local);
+        // Also fetch from API in background if needed
+        DataAccessLayer.fetchDoctorsFromApi().then((fresh) => {
+          setDoctors(fresh);
+        }).catch(() => {});
+      }
+    } catch (err: any) {
+      setSyncStatus({ message: `API Sync warning: ${err.message}`, type: 'error' });
+      setDoctors(DataAccessLayer.getAllDoctors());
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
-    loadDoctors();
-    const handleUpdate = () => loadDoctors();
+    loadDoctors(true);
+    const handleUpdate = () => {
+      setDoctors(DataAccessLayer.getAllDoctors());
+    };
     window.addEventListener('careon_data_updated', handleUpdate);
     return () => window.removeEventListener('careon_data_updated', handleUpdate);
   }, []);
@@ -80,46 +134,62 @@ export const DoctorManager: React.FC = () => {
   }, [doctors, statusFilter, departmentFilter, searchQuery]);
 
   // Handle Save Doctor (Create or Update)
-  const handleSaveDoctor = (doctorData: Partial<Doctor>) => {
+  const handleSaveDoctor = async (doctorData: Partial<Doctor>) => {
     if (!doctorData.name || !doctorData.departmentId) {
       alert('Doctor Name and Department are required.');
       return;
     }
 
+    if (!currentUser) {
+      alert('You must be logged in as an Administrator to save doctor records.');
+      return;
+    }
+
+    setIsSaving(true);
     try {
       if (doctorToEdit && doctorToEdit.id) {
-        DataAccessLayer.saveDoctor(
+        await DataAccessLayer.saveDoctorAsync(
           { ...doctorData, id: doctorToEdit.id, name: doctorData.name, departmentId: doctorData.departmentId },
           currentUser
         );
       } else {
-        DataAccessLayer.saveDoctor(
+        await DataAccessLayer.saveDoctorAsync(
           { ...doctorData, name: doctorData.name, departmentId: doctorData.departmentId },
           currentUser
         );
       }
       setIsFormOpen(false);
       setDoctorToEdit(null);
-      loadDoctors();
+      await loadDoctors(true);
+      setSyncStatus({ message: 'Doctor successfully saved to Production Store.', type: 'success' });
     } catch (err: any) {
       alert(err?.message || 'Error saving doctor. Please try again.');
+      setSyncStatus({ message: `Save error: ${err.message}`, type: 'error' });
+    } finally {
+      setIsSaving(false);
     }
   };
 
   // Handle Delete Doctor
-  const handleConfirmDelete = () => {
-    if (!doctorToDelete) return;
+  const handleConfirmDelete = async () => {
+    if (!doctorToDelete || !currentUser) return;
+    setIsSaving(true);
     try {
-      DataAccessLayer.deleteDoctor(doctorToDelete.id, currentUser);
+      await DataAccessLayer.deleteDoctorAsync(doctorToDelete.id, currentUser);
       setDoctorToDelete(null);
-      loadDoctors();
+      await loadDoctors(true);
+      setSyncStatus({ message: `Doctor ${doctorToDelete.name} removed from Production Store.`, type: 'success' });
     } catch (err: any) {
       alert(err?.message || 'Error deleting doctor.');
+      setSyncStatus({ message: `Delete error: ${err.message}`, type: 'error' });
+    } finally {
+      setIsSaving(false);
     }
   };
 
   // Toggle active status
   const handleToggleStatus = (doc: Doctor) => {
+    if (!currentUser) return;
     const nextStatus: ContentStatus = doc.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     DataAccessLayer.toggleDoctorStatus(doc.id, nextStatus, currentUser);
     loadDoctors();
@@ -147,27 +217,113 @@ export const DoctorManager: React.FC = () => {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-200">
         <div>
-          <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2.5">
-            <Users className="w-6 h-6 text-[#007E70]" />
-            <span>Doctor Management</span>
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2.5">
+              <Users className="w-6 h-6 text-[#007E70]" />
+              <span>Doctor Management</span>
+            </h1>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-semibold border border-emerald-200">
+              <Server className="w-3 h-3" />
+              <span>Production API Connected ({apiClient.getBaseUrl()})</span>
+            </div>
+          </div>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            {doctors.length} configured doctor{doctors.length === 1 ? '' : 's'} registered at CareOn Medical Clinic
+            {doctors.length} configured doctor{doctors.length === 1 ? '' : 's'} registered at CareOn Medical Clinic — Synchronized across Preview, Admin & Public Website
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            setDoctorToEdit(null);
-            setIsFormOpen(true);
-          }}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#007E70] hover:bg-[#009282] active:bg-[#006e62] text-white text-xs sm:text-sm font-bold rounded-xl shadow-sm shadow-teal-900/20 transition-all cursor-pointer min-h-[44px]"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add Doctor</span>
-        </button>
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => loadDoctors(true)}
+            disabled={isLoading}
+            title="Fetch authoritative doctor records from Production Store"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer min-h-[44px] disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>{isLoading ? 'Syncing...' : 'Sync Server'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setDoctorToEdit(null);
+              setIsFormOpen(true);
+            }}
+            disabled={isSaving}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#007E70] hover:bg-[#009282] active:bg-[#006e62] text-white text-xs sm:text-sm font-bold rounded-xl shadow-sm shadow-teal-900/20 transition-all cursor-pointer min-h-[44px] disabled:opacity-50"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Doctor</span>
+          </button>
+        </div>
       </div>
+
+      {/* PostgreSQL Permission Alert Banner */}
+      {dbHealth && dbHealth.permissionsGranted === false && (
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 space-y-3 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-sm font-bold text-amber-900">
+                  Supabase PostgreSQL Permissions (GRANT) Required
+                </h4>
+                <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+                  The application is connected to Supabase PostgreSQL, but the database role requires table access permissions.
+                  Run the SQL command below in your <span className="font-semibold underline">Supabase Dashboard &gt; SQL Editor</span>, then click "Sync Server".
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (dbHealth.sqlGrantScript) {
+                  navigator.clipboard.writeText(dbHealth.sqlGrantScript);
+                  setCopiedSql(true);
+                  setTimeout(() => setCopiedSql(false), 3000);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white rounded-xl text-xs font-bold shrink-0 transition-colors cursor-pointer self-start sm:self-auto"
+            >
+              {copiedSql ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedSql ? 'Copied SQL!' : 'Copy SQL Grant Script'}</span>
+            </button>
+          </div>
+          {dbHealth.sqlGrantScript && (
+            <pre className="p-3 bg-white/80 border border-amber-200 rounded-xl text-[11px] font-mono text-amber-950 overflow-x-auto select-all leading-snug">
+              {dbHealth.sqlGrantScript}
+            </pre>
+          )}
+        </div>
+      )}
+
+      {/* Sync Status Banner */}
+      {syncStatus.message && (
+        <div
+          className={`flex items-center justify-between p-3 rounded-xl text-xs font-semibold ${
+            syncStatus.type === 'error'
+              ? 'bg-rose-50 text-rose-800 border border-rose-200'
+              : 'bg-teal-50 text-[#007E70] border border-teal-200'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {syncStatus.type === 'error' ? (
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-[#007E70] shrink-0" />
+            )}
+            <span>{syncStatus.message}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSyncStatus({ message: '', type: 'idle' })}
+            className="text-slate-400 hover:text-slate-600 cursor-pointer text-xs ml-2"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Search & Filters Bar */}
       <div className="space-y-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs">

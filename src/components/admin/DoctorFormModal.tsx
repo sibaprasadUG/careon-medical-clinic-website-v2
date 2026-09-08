@@ -93,6 +93,32 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
   const specialtyRef = useRef<HTMLDivElement>(null);
   const servicesRef = useRef<HTMLDivElement>(null);
 
+  // Dynamic departments fetched from database /api/departments
+  const [dbDepartments, setDbDepartments] = useState<MasterDepartment[]>([]);
+
+  useEffect(() => {
+    fetch('/api/departments')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.departments) && data.departments.length > 0) {
+          setDbDepartments(
+            data.departments.map((d: any) => ({
+              id: d.id,
+              name: d.name,
+              nameBn: d.nameBn || '',
+              category: d.category || 'Clinical',
+              keywords: [d.name, d.slug || '']
+            }))
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const departmentList = useMemo(() => {
+    return dbDepartments.length > 0 ? dbDepartments : MASTER_DEPARTMENTS;
+  }, [dbDepartments]);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (deptRef.current && !deptRef.current.contains(e.target as Node)) {
@@ -179,15 +205,15 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
 
   // Filtered master departments for smart searchable dropdown
   const filteredDepartments = useMemo(() => {
-    if (!deptSearchQuery.trim()) return MASTER_DEPARTMENTS;
+    if (!deptSearchQuery.trim()) return departmentList;
     const q = deptSearchQuery.toLowerCase().trim();
-    return MASTER_DEPARTMENTS.filter(
+    return departmentList.filter(
       (dept) =>
         dept.name.toLowerCase().includes(q) ||
-        dept.nameBn.includes(q) ||
-        dept.keywords.some((k) => k.toLowerCase().includes(q))
+        (dept.nameBn && dept.nameBn.includes(q)) ||
+        (dept.keywords && dept.keywords.some((k) => k.toLowerCase().includes(q)))
     );
-  }, [deptSearchQuery]);
+  }, [departmentList, deptSearchQuery]);
 
   // Available specialties for the selected department
   const availableSpecialties = useMemo(() => {
@@ -216,8 +242,8 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
 
   // Selected department object
   const currentDeptObj = useMemo(() => {
-    return MASTER_DEPARTMENTS.find((d) => d.id === departmentId) || MASTER_DEPARTMENTS[0];
-  }, [departmentId]);
+    return departmentList.find((d) => d.id === departmentId) || departmentList[0];
+  }, [departmentList, departmentId]);
 
   // Selected specialty object
   const currentSpecialtyObj = useMemo(() => {

@@ -3,21 +3,49 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { Doctor, Department, Service, WebsiteSettings, MediaAsset, AdminUser } from '../types';
-import { DEFAULT_DEPARTMENTS, DEFAULT_DOCTORS, DEFAULT_SERVICES, DEFAULT_WEBSITE_SETTINGS } from '../data/seedData';
+import { DEFAULT_DEPARTMENTS, DEFAULT_SERVICES, DEFAULT_WEBSITE_SETTINGS } from '../data/seedData';
 import { PROJECT_ASSETS_MANIFEST } from '../data/assetsManifest';
+import { INITIAL_PRODUCTION_STORE } from '../data/productionStoreSnapshot';
+import {
+  isSupabaseConfigured,
+  getSupabaseDoctors,
+  getSupabaseDoctor,
+  upsertSupabaseDoctor,
+  deleteSupabaseDoctor,
+  reorderSupabaseDoctors,
+  getSupabaseDepartments,
+  getSupabaseServices,
+  getSupabaseSettings,
+  saveSupabaseSettings,
+  checkSupabaseHealth
+} from './supabase';
 
-// Persistent data file path for serverless / server environment
+// Persistent data file paths for local server / container fallback
 const DATA_DIR = path.join(process.cwd(), '.data');
 const DATA_FILE = path.join(DATA_DIR, 'careon_store.json');
 const TMP_DATA_FILE = path.join(os.tmpdir(), 'careon_store.json');
 
-// Secret for HMAC session token signing (configurable via server env)
+// Secret for HMAC session token signing (server-side only)
 const SESSION_SECRET =
   process.env.SESSION_SECRET || 'careon_secure_clinic_session_secret_2026_production_key';
 
-// Admin credentials (configurable via server environment variables)
-const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'admin@careonclinic.com').toLowerCase().trim();
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'CareOnAdmin2026!';
+/**
+ * Retrieves the admin credentials securely from server environment variables.
+ * Fails securely if ADMIN_EMAIL or ADMIN_PASSWORD is not configured.
+ * Never hardcodes default credentials or exposes passwords.
+ */
+export function getAdminCredentials(): { email: string; password: string } {
+  const email = process.env.ADMIN_EMAIL ? process.env.ADMIN_EMAIL.trim().toLowerCase() : '';
+  const password = process.env.ADMIN_PASSWORD ? String(process.env.ADMIN_PASSWORD) : '';
+
+  if (!email || !password) {
+    throw new Error(
+      'ADMIN_AUTH_NOT_CONFIGURED: Both ADMIN_EMAIL and ADMIN_PASSWORD environment variables must be configured on the server.'
+    );
+  }
+
+  return { email, password };
+}
 
 export interface ServerStore {
   doctors: Doctor[];
@@ -29,8 +57,8 @@ export interface ServerStore {
   lastUpdated: string;
 }
 
-// In-memory cache for fast response and fallback in read-only environments
-let memoryStore: ServerStore | null = null;
+// In-memory cache for fast lookups
+let inMemoryStore: ServerStore | null = null;
 let lastLoadedMtime = 0;
 
 const DEMO_DOCTOR_NAMES = [
@@ -47,11 +75,13 @@ export function isRealDoctor(d: any): boolean {
   if (DEMO_DOCTOR_NAMES.includes(name)) return false;
   if (['doc-01', 'doc-02', 'doc-03', 'doc-04'].includes(d.id) && DEMO_DOCTOR_NAMES.includes(name)) return false;
   if (d.serviceType || d.category === 'Preventive' || d.category === 'Diagnostic' || d.category === 'Specialized') return false;
-  if (!d.departmentId) return false;
   return true;
 }
 
-function ensureDataFile(): ServerStore {
+/**
+ * Load local file store (used as fallback when Supabase is not yet configured)
+ */
+export async function getLocalStore(): Promise<ServerStore> {
   let activeFilePath: string | null = null;
   let activeMtime = 0;
 
@@ -70,52 +100,51 @@ function ensureDataFile(): ServerStore {
       activeMtime = dataFileMtime;
     }
   } catch {
-    // Stat error, continue
+    // Continue
   }
 
-  if (memoryStore && activeFilePath && activeMtime <= lastLoadedMtime) {
-    return memoryStore;
+  if (inMemoryStore && activeFilePath && activeMtime <= lastLoadedMtime) {
+    return inMemoryStore;
   }
 
   if (activeFilePath) {
     try {
       const raw = fs.readFileSync(activeFilePath, 'utf-8');
       const parsed = JSON.parse(raw);
-      if (parsed) {
-        if (Array.isArray(parsed.doctors)) {
-          parsed.doctors = parsed.doctors.filter(isRealDoctor);
-        } else {
-          parsed.doctors = [];
-        }
-        memoryStore = parsed;
+      if (parsed && Array.isArray(parsed.doctors)) {
+        parsed.doctors = parsed.doctors.filter(isRealDoctor);
+        inMemoryStore = parsed;
         lastLoadedMtime = activeMtime;
-        return memoryStore!;
+        return inMemoryStore!;
       }
     } catch {
-      // JSON parse or read error, fallback to memoryStore or defaults
+      // Fallback
     }
   }
 
-  if (memoryStore) {
-    return memoryStore;
+  if (inMemoryStore) {
+    return inMemoryStore;
   }
 
-  memoryStore = {
-    doctors: [],
-    departments: [...DEFAULT_DEPARTMENTS],
-    services: [...DEFAULT_SERVICES],
-    settings: { ...DEFAULT_WEBSITE_SETTINGS },
-    assets: [...PROJECT_ASSETS_MANIFEST],
-    invalidatedTokens: [],
+  // Fallback to bundled snapshot (contains real clinic faculty DR. DEBDUTTA NAYAK & DR. ARKA DEY)
+  const initialStore: ServerStore = {
+    ...INITIAL_PRODUCTION_STORE,
+    doctors: INITIAL_PRODUCTION_STORE.doctors.filter(isRealDoctor),
     lastUpdated: new Date().toISOString()
   };
 
-  persistStore(memoryStore);
-  return memoryStore;
+  await persistLocalStore(initialStore);
+  return initialStore;
 }
 
-function persistStore(store: ServerStore) {
-  memoryStore = store;
+/**
+ * Persist to local filesystem
+ */
+export async function persistLocalStore(store: ServerStore): Promise<void> {
+  store.lastUpdated = new Date().toISOString();
+  store.doctors = store.doctors.filter(isRealDoctor);
+  inMemoryStore = store;
+
   const jsonStr = JSON.stringify(store, null, 2);
 
   try {
@@ -125,7 +154,7 @@ function persistStore(store: ServerStore) {
     fs.writeFileSync(DATA_FILE, jsonStr, 'utf-8');
     lastLoadedMtime = fs.statSync(DATA_FILE).mtimeMs;
   } catch {
-    // Read-only filesystem in cloud/serverless environment
+    // Read-only filesystem in serverless
   }
 
   try {
@@ -135,8 +164,73 @@ function persistStore(store: ServerStore) {
       lastLoadedMtime = tmpMtime;
     }
   } catch {
-    // tmp write error fallback
+    // Tmp write error
   }
+}
+
+/**
+ * Universal store retrieval
+ * When Supabase is configured: reads from Supabase PostgreSQL.
+ * Otherwise: falls back to local file store.
+ */
+export async function getPersistentStore(): Promise<ServerStore> {
+  if (isSupabaseConfigured()) {
+    try {
+      const [doctors, departments, services, settings] = await Promise.all([
+        getSupabaseDoctors(),
+        getSupabaseDepartments(),
+        getSupabaseServices(),
+        getSupabaseSettings()
+      ]);
+
+      const store: ServerStore = {
+        doctors: doctors.filter(isRealDoctor),
+        departments: departments && departments.length > 0 ? departments : DEFAULT_DEPARTMENTS,
+        services: services && services.length > 0 ? services : DEFAULT_SERVICES,
+        settings: settings || DEFAULT_WEBSITE_SETTINGS,
+        assets: PROJECT_ASSETS_MANIFEST,
+        invalidatedTokens: inMemoryStore?.invalidatedTokens || [],
+        lastUpdated: new Date().toISOString()
+      };
+      inMemoryStore = store;
+      return store;
+    } catch (err: any) {
+      console.warn('[CareOn API] Supabase fetch error, using local cache:', err.message);
+      return getLocalStore();
+    }
+  }
+
+  return getLocalStore();
+}
+
+/**
+ * Universal store persist
+ */
+export async function persistStore(store: ServerStore): Promise<void> {
+  await persistLocalStore(store);
+}
+
+// Synchronous wrapper for token verification and quick lookups
+export function getCachedStoreSync(): ServerStore {
+  if (inMemoryStore) return inMemoryStore;
+  try {
+    if (fs.existsSync(DATA_FILE)) {
+      const raw = fs.readFileSync(DATA_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (parsed) {
+        parsed.doctors = (parsed.doctors || []).filter(isRealDoctor);
+        inMemoryStore = parsed;
+        return inMemoryStore!;
+      }
+    }
+  } catch {
+    // Ignore
+  }
+  inMemoryStore = {
+    ...INITIAL_PRODUCTION_STORE,
+    doctors: INITIAL_PRODUCTION_STORE.doctors.filter(isRealDoctor)
+  };
+  return inMemoryStore;
 }
 
 // Cryptographic token helpers
@@ -187,8 +281,8 @@ export function verifySessionToken(token: string): { valid: boolean; user?: Admi
       return { valid: false, error: 'Token expired' };
     }
 
-    const store = ensureDataFile();
-    if (store.invalidatedTokens.includes(token)) {
+    const store = getCachedStoreSync();
+    if (store.invalidatedTokens && store.invalidatedTokens.includes(token)) {
       return { valid: false, error: 'Token has been invalidated/logged out' };
     }
 
@@ -196,7 +290,7 @@ export function verifySessionToken(token: string): { valid: boolean; user?: Admi
       valid: true,
       user: {
         id: data.sub || 'usr-admin-01',
-        email: data.email || ADMIN_EMAIL,
+        email: data.email || (process.env.ADMIN_EMAIL ? process.env.ADMIN_EMAIL.trim().toLowerCase() : 'admin'),
         name: data.name || 'CareOn Administrator',
         role: 'ADMIN'
       }
@@ -206,19 +300,18 @@ export function verifySessionToken(token: string): { valid: boolean; user?: Admi
   }
 }
 
-export function invalidateSessionToken(token: string) {
-  const store = ensureDataFile();
+export async function invalidateSessionToken(token: string) {
+  const store = await getLocalStore();
   if (!store.invalidatedTokens.includes(token)) {
     store.invalidatedTokens.push(token);
-    // Keep max 500 invalidated tokens
     if (store.invalidatedTokens.length > 500) {
       store.invalidatedTokens = store.invalidatedTokens.slice(-500);
     }
-    persistStore(store);
+    await persistLocalStore(store);
   }
 }
 
-// Request Handler for API router
+// Request & Response Interfaces
 export interface ApiRequest {
   method: string;
   path: string;
@@ -233,8 +326,22 @@ export interface ApiResponse {
   body: string;
 }
 
+/**
+ * Universal API Request Handler
+ * Backed by Supabase PostgreSQL (Project: careon-medical-clinic)
+ * Supported endpoints:
+ * - /api/health
+ * - /api/auth/login, /api/auth/verify, /api/auth/logout
+ * - /api/doctors (GET, POST)
+ * - /api/doctors/:id (GET, PUT, PATCH, DELETE)
+ * - /api/doctors/reorder (POST)
+ * - /api/data (GET)
+ * - /api/data/sync (POST)
+ * - /api/assets (GET)
+ */
 export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
   const cleanPath = req.path.replace(/^\/api/, '').replace(/\/$/, '') || '/';
+  const method = (req.method || 'GET').toUpperCase();
   const authHeader = req.headers['authorization'] || req.headers['Authorization'] || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7).trim() : authHeader.trim();
 
@@ -243,35 +350,79 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
     headers: {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS'
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
     },
     body: JSON.stringify(data)
   });
 
-  if (req.method === 'OPTIONS') {
+  // CORS preflight
+  if (method === 'OPTIONS') {
     return jsonResponse(200, { ok: true });
   }
 
+  // --- HEALTH CHECK ENDPOINT ---
   if (cleanPath === '/health' || cleanPath === '') {
-    return jsonResponse(200, { status: 'ok', time: new Date().toISOString() });
+    const supabaseConfigured = isSupabaseConfigured();
+    if (supabaseConfigured) {
+      const health = await checkSupabaseHealth();
+      return jsonResponse(200, {
+        status: 'ok',
+        version: 'careon-supabase-3.0',
+        time: new Date().toISOString(),
+        database: {
+          provider: 'supabase_postgresql',
+          project: 'careon-medical-clinic',
+          connected: health.connected,
+          tablesReady: health.tablesReady,
+          permissionsGranted: health.permissionsGranted,
+          doctorsCount: health.doctorsCount,
+          departmentsCount: health.departmentsCount,
+          servicesCount: health.servicesCount,
+          sqlGrantScript: health.sqlGrantScript,
+          error: health.error
+        }
+      });
+    }
+
+    const store = await getLocalStore();
+    return jsonResponse(200, {
+      status: 'ok',
+      version: 'careon-supabase-3.0',
+      time: new Date().toISOString(),
+      database: {
+        provider: 'local_file_fallback',
+        project: 'careon-medical-clinic',
+        connected: false,
+        hint: 'Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to connect live Supabase PostgreSQL database.',
+        doctorsCount: store.doctors.length,
+        lastUpdated: store.lastUpdated
+      }
+    });
   }
 
   // --- AUTH ENDPOINTS ---
-  if (cleanPath === '/auth/login' && req.method === 'POST') {
+  if (cleanPath === '/auth/login' && method === 'POST') {
+    let adminCreds: { email: string; password: string };
+    try {
+      adminCreds = getAdminCredentials();
+    } catch {
+      console.error('[CareOn Auth] Server configuration error: ADMIN_EMAIL or ADMIN_PASSWORD environment variable is missing.');
+      return jsonResponse(500, {
+        success: false,
+        error: 'Admin authentication is not configured on the server. Please ensure ADMIN_EMAIL and ADMIN_PASSWORD environment variables are set.'
+      });
+    }
+
     const { email, password } = req.body || {};
     if (!email || !password) {
       return jsonResponse(400, { success: false, error: 'Admin email and password are required.' });
     }
 
     const cleanEmail = String(email).trim().toLowerCase();
-    const isEmailMatch =
-      cleanEmail === ADMIN_EMAIL ||
-      cleanEmail === 'admin' ||
-      cleanEmail === 'admin@careonclinic.com' ||
-      cleanEmail === 'careonadmin';
-
-    const isPassMatch = String(password).trim() === ADMIN_PASSWORD;
+    const isEmailMatch = cleanEmail === adminCreds.email;
+    const isPassMatch = String(password) === adminCreds.password;
 
     if (!isEmailMatch || !isPassMatch) {
       return jsonResponse(401, { success: false, error: 'Invalid admin credentials.' });
@@ -279,7 +430,7 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
 
     const adminUser: AdminUser = {
       id: 'usr-admin-01',
-      email: ADMIN_EMAIL,
+      email: adminCreds.email,
       name: 'CareOn Administrator',
       role: 'ADMIN'
     };
@@ -293,7 +444,7 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
     });
   }
 
-  if (cleanPath === '/auth/verify' && (req.method === 'GET' || req.method === 'POST')) {
+  if (cleanPath === '/auth/verify' && (method === 'GET' || method === 'POST')) {
     const auth = verifySessionToken(token);
     if (!auth.valid || !auth.user) {
       return jsonResponse(401, { valid: false, error: auth.error || 'Unauthorized' });
@@ -301,139 +452,489 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
     return jsonResponse(200, { valid: true, user: auth.user });
   }
 
-  if (cleanPath === '/auth/logout' && req.method === 'POST') {
+  if (cleanPath === '/auth/logout' && method === 'POST') {
     if (token) {
-      invalidateSessionToken(token);
+      await invalidateSessionToken(token);
     }
     return jsonResponse(200, { success: true, message: 'Logged out successfully.' });
   }
 
-  // --- DOCTOR ENDPOINTS ---
-  if (cleanPath === '/doctors') {
-    const store = ensureDataFile();
+  // --- DOCTOR CRUD ENDPOINTS ---
 
-    if (req.method === 'GET') {
-      return jsonResponse(200, {
-        success: true,
-        doctors: store.doctors,
-        total: store.doctors.length
-      });
+  // 1. GET /api/doctors (List all doctors, with optional department/status filter)
+  if (cleanPath === '/doctors' && method === 'GET') {
+    if (isSupabaseConfigured()) {
+      try {
+        const doctors = await getSupabaseDoctors({
+          department: req.query?.department,
+          status: req.query?.status
+        });
+        const validDoctors = doctors.filter(isRealDoctor);
+        return jsonResponse(200, {
+          success: true,
+          doctors: validDoctors,
+          total: validDoctors.length,
+          source: 'supabase_postgresql',
+          lastUpdated: new Date().toISOString()
+        });
+      } catch (sbErr: any) {
+        console.warn('[CareOn API] Supabase GET /doctors error:', sbErr.message);
+        return jsonResponse(200, {
+          success: true,
+          doctors: [],
+          total: 0,
+          source: 'supabase_postgresql',
+          error: sbErr.message,
+          lastUpdated: new Date().toISOString()
+        });
+      }
     }
 
-    if (req.method === 'POST') {
-      // Require Admin Auth
-      const auth = verifySessionToken(token);
-      if (!auth.valid || !auth.user) {
-        return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
-      }
+    const store = await getLocalStore();
+    let doctors = store.doctors.filter(isRealDoctor);
 
-      const doctorData = req.body as Doctor;
-      if (!doctorData || !doctorData.name || !doctorData.departmentId) {
-        return jsonResponse(400, { success: false, error: 'Doctor name and department are required.' });
-      }
-
-      let savedDoctor: Doctor;
-      const existingIndex = store.doctors.findIndex((d) => d.id === doctorData.id);
-
-      if (existingIndex >= 0) {
-        savedDoctor = {
-          ...store.doctors[existingIndex],
-          ...doctorData,
-          updatedAt: new Date().toISOString()
-        };
-        store.doctors[existingIndex] = savedDoctor;
-      } else {
-        savedDoctor = {
-          ...doctorData,
-          id: doctorData.id || `doc-${Date.now()}`,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
-        store.doctors.push(savedDoctor);
-      }
-
-      store.lastUpdated = new Date().toISOString();
-      persistStore(store);
-
-      return jsonResponse(200, {
-        success: true,
-        doctor: savedDoctor,
-        doctors: store.doctors
-      });
+    if (req.query?.department && req.query.department !== 'all') {
+      doctors = doctors.filter((d) => d.departmentId === req.query!.department);
     }
+    if (req.query?.status) {
+      doctors = doctors.filter((d) => d.status === req.query!.status);
+    }
+
+    return jsonResponse(200, {
+      success: true,
+      doctors,
+      total: doctors.length,
+      source: 'local_store',
+      lastUpdated: store.lastUpdated
+    });
   }
 
-  // DELETE /doctors/:id
-  if (cleanPath.startsWith('/doctors/') && req.method === 'DELETE') {
+  // 2. GET /api/doctors/:id (Single doctor details by ID or Slug)
+  if (cleanPath.startsWith('/doctors/') && cleanPath.split('/').length === 3 && method === 'GET') {
+    const docIdOrSlug = cleanPath.split('/')[2];
+
+    if (isSupabaseConfigured()) {
+      try {
+        const doctor = await getSupabaseDoctor(docIdOrSlug);
+        if (doctor && isRealDoctor(doctor)) {
+          return jsonResponse(200, { success: true, doctor, source: 'supabase_postgresql' });
+        }
+      } catch (err: any) {
+        console.warn('[CareOn API] Supabase GET doctor/:id error:', err.message);
+      }
+    }
+
+    const store = await getLocalStore();
+    const doctor = store.doctors.find((d) => (d.id === docIdOrSlug || d.slug === docIdOrSlug) && isRealDoctor(d));
+
+    if (!doctor) {
+      return jsonResponse(404, { success: false, error: `Doctor ${docIdOrSlug} not found.` });
+    }
+
+    return jsonResponse(200, { success: true, doctor, source: 'local_store' });
+  }
+
+  // 3. POST /api/doctors (Create new doctor - Admin only)
+  if (cleanPath === '/doctors' && method === 'POST') {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    const doctorData = req.body as Partial<Doctor>;
+    if (!doctorData || !doctorData.name || !doctorData.departmentId) {
+      return jsonResponse(400, { success: false, error: 'Doctor name and department are required.' });
+    }
+
+    if (isSupabaseConfigured()) {
+      try {
+        const savedDoctor = await upsertSupabaseDoctor(doctorData);
+        // Also update local cache
+        const localStore = await getLocalStore();
+        const existingIdx = localStore.doctors.findIndex((d) => d.id === savedDoctor.id);
+        if (existingIdx >= 0) {
+          localStore.doctors[existingIdx] = savedDoctor;
+        } else {
+          localStore.doctors.push(savedDoctor);
+        }
+        await persistLocalStore(localStore);
+
+        const allDocs = await getSupabaseDoctors();
+        return jsonResponse(201, {
+          success: true,
+          doctor: savedDoctor,
+          doctors: allDocs.filter(isRealDoctor),
+          source: 'supabase_postgresql'
+        });
+      } catch (sbErr: any) {
+        console.error('[CareOn API] Supabase doctor create error:', sbErr.message);
+        return jsonResponse(500, { success: false, error: `Supabase insert failed: ${sbErr.message}` });
+      }
+    }
+
+    // Fallback to local store
+    const store = await getLocalStore();
+    const existingIndex = store.doctors.findIndex(
+      (d) => (doctorData.id && d.id === doctorData.id) || d.name.trim().toLowerCase() === doctorData.name!.trim().toLowerCase()
+    );
+
+    let savedDoctor: Doctor;
+    const now = new Date().toISOString();
+
+    if (existingIndex >= 0) {
+      savedDoctor = {
+        ...store.doctors[existingIndex],
+        ...doctorData,
+        id: store.doctors[existingIndex].id,
+        updatedAt: now
+      };
+      store.doctors[existingIndex] = savedDoctor;
+    } else {
+      const maxOrder = store.doctors.reduce((max, d) => Math.max(max, d.displayOrder || 0), 0);
+      savedDoctor = {
+        id: doctorData.id || `doc-${Date.now()}`,
+        name: doctorData.name,
+        nameBn: doctorData.nameBn || '',
+        slug: doctorData.slug || doctorData.name.toLowerCase().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-'),
+        photoUrl: doctorData.profilePhotoUrl || doctorData.photoUrl || '',
+        profilePhotoUrl: doctorData.profilePhotoUrl || doctorData.photoUrl || '',
+        photoAssetId: doctorData.photoAssetId || doctorData.profilePhotoAssetId || '',
+        profilePhotoAssetId: doctorData.photoAssetId || doctorData.profilePhotoAssetId || '',
+        profilePhotoAlt: doctorData.profilePhotoAlt || `Dr. ${doctorData.name} - CareOn Medical Clinic`,
+        departmentId: doctorData.departmentId,
+        specialtyId: doctorData.specialtyId || '',
+        designation: doctorData.designation || 'Consultant',
+        qualification: doctorData.qualification || 'MBBS',
+        registrationNumber: doctorData.registrationNumber || '',
+        shortBio: doctorData.shortBio || '',
+        areasOfExpertise: doctorData.areasOfExpertise || [],
+        schedules: doctorData.schedules || [],
+        chamberId: doctorData.chamberId || 'CareOn Medical Clinic',
+        chamberCustom: doctorData.chamberCustom || '',
+        serviceIds: doctorData.serviceIds || [],
+        active: doctorData.status !== 'INACTIVE' && doctorData.active !== false,
+        published: doctorData.status !== 'INACTIVE' && doctorData.active !== false,
+        consultationDays: doctorData.consultationDays || ['Sat'],
+        consultationTime: doctorData.consultationTime || '10:30 AM – 11:30 AM',
+        roomNumber: doctorData.roomNumber || 'CareOn Medical Clinic',
+        weeklySchedule: doctorData.weeklySchedule,
+        customSchedules: doctorData.customSchedules,
+        scheduleExceptions: doctorData.scheduleExceptions,
+        appointmentEnabled: doctorData.appointmentEnabled !== undefined ? doctorData.appointmentEnabled : true,
+        featured: Boolean(doctorData.featured),
+        displayOrder: doctorData.displayOrder || maxOrder + 1,
+        status: doctorData.status || (doctorData.active === false ? 'INACTIVE' : 'ACTIVE'),
+        createdAt: now,
+        updatedAt: now
+      };
+      store.doctors.push(savedDoctor);
+    }
+
+    await persistLocalStore(store);
+
+    return jsonResponse(201, {
+      success: true,
+      doctor: savedDoctor,
+      doctors: store.doctors.filter(isRealDoctor),
+      source: 'local_store'
+    });
+  }
+
+  // 4. PUT /api/doctors/:id or PATCH /api/doctors/:id (Update doctor - Admin only)
+  if (
+    cleanPath.startsWith('/doctors/') &&
+    cleanPath.split('/').length === 3 &&
+    (method === 'PUT' || method === 'PATCH')
+  ) {
     const auth = verifySessionToken(token);
     if (!auth.valid || !auth.user) {
       return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
     }
 
     const doctorId = cleanPath.split('/')[2];
-    const store = ensureDataFile();
+    const updateData = req.body as Partial<Doctor>;
+
+    if (isSupabaseConfigured()) {
+      try {
+        const updated = await upsertSupabaseDoctor({ ...updateData, id: doctorId });
+        const allDocs = await getSupabaseDoctors();
+        return jsonResponse(200, {
+          success: true,
+          doctor: updated,
+          doctors: allDocs.filter(isRealDoctor),
+          source: 'supabase_postgresql'
+        });
+      } catch (sbErr: any) {
+        console.error('[CareOn API] Supabase update doctor error:', sbErr.message);
+        return jsonResponse(500, { success: false, error: `Supabase update failed: ${sbErr.message}` });
+      }
+    }
+
+    const store = await getLocalStore();
+    const index = store.doctors.findIndex((d) => d.id === doctorId);
+
+    if (index === -1) {
+      return jsonResponse(404, { success: false, error: `Doctor ${doctorId} not found.` });
+    }
+
+    const existing = store.doctors[index];
+    const updatedDoctor: Doctor = {
+      ...existing,
+      ...updateData,
+      id: existing.id,
+      createdAt: existing.createdAt,
+      updatedAt: new Date().toISOString()
+    };
+
+    store.doctors[index] = updatedDoctor;
+    await persistLocalStore(store);
+
+    return jsonResponse(200, {
+      success: true,
+      doctor: updatedDoctor,
+      doctors: store.doctors.filter(isRealDoctor),
+      source: 'local_store'
+    });
+  }
+
+  // 5. DELETE /api/doctors/:id (Delete doctor - Admin only)
+  if (cleanPath.startsWith('/doctors/') && cleanPath.split('/').length === 3 && method === 'DELETE') {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    const doctorId = cleanPath.split('/')[2];
+
+    if (isSupabaseConfigured()) {
+      try {
+        await deleteSupabaseDoctor(doctorId);
+        const allDocs = await getSupabaseDoctors();
+
+        // Also remove from local cache
+        const localStore = await getLocalStore();
+        localStore.doctors = localStore.doctors.filter((d) => d.id !== doctorId);
+        await persistLocalStore(localStore);
+
+        return jsonResponse(200, {
+          success: true,
+          message: `Doctor ${doctorId} permanently removed from Supabase production database.`,
+          doctors: allDocs.filter(isRealDoctor),
+          source: 'supabase_postgresql'
+        });
+      } catch (sbErr: any) {
+        console.error('[CareOn API] Supabase delete doctor error:', sbErr.message);
+        return jsonResponse(500, { success: false, error: `Supabase delete failed: ${sbErr.message}` });
+      }
+    }
+
+    const store = await getLocalStore();
     const beforeCount = store.doctors.length;
+    const removedDoctor = store.doctors.find((d) => d.id === doctorId);
+
     store.doctors = store.doctors.filter((d) => d.id !== doctorId);
 
     if (store.doctors.length !== beforeCount) {
-      store.lastUpdated = new Date().toISOString();
-      persistStore(store);
+      await persistLocalStore(store);
     }
 
     return jsonResponse(200, {
       success: true,
-      message: `Doctor ${doctorId} deleted`,
-      doctors: store.doctors
+      message: `Doctor ${doctorId} (${removedDoctor?.name || 'Doctor'}) permanently deleted.`,
+      doctors: store.doctors.filter(isRealDoctor),
+      source: 'local_store'
     });
   }
 
-  // --- DATA SYNC & GET ALL ---
-  if (cleanPath === '/data') {
-    const store = ensureDataFile();
+  // 6. POST /api/doctors/reorder (Reorder doctors - Admin only)
+  if (cleanPath === '/doctors/reorder' && method === 'POST') {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    const { orders } = req.body || {};
+    if (!Array.isArray(orders)) {
+      return jsonResponse(400, { success: false, error: 'orders array is required.' });
+    }
+
+    if (isSupabaseConfigured()) {
+      try {
+        const reordered = await reorderSupabaseDoctors(orders);
+        return jsonResponse(200, {
+          success: true,
+          doctors: reordered.filter(isRealDoctor),
+          source: 'supabase_postgresql'
+        });
+      } catch (sbErr: any) {
+        console.error('[CareOn API] Supabase reorder error:', sbErr.message);
+      }
+    }
+
+    const store = await getLocalStore();
+    for (const item of orders) {
+      const doc = store.doctors.find((d) => d.id === item.id);
+      if (doc && typeof item.displayOrder === 'number') {
+        doc.displayOrder = item.displayOrder;
+      }
+    }
+
+    store.doctors.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+    await persistLocalStore(store);
+
     return jsonResponse(200, {
       success: true,
-      doctors: store.doctors,
+      doctors: store.doctors.filter(isRealDoctor),
+      source: 'local_store'
+    });
+  }
+
+  // --- FULL DATA SYNC & SYSTEM RESTORE ---
+
+  // GET /api/data (Full unified dataset)
+  if (cleanPath === '/data' && method === 'GET') {
+    const store = await getPersistentStore();
+    return jsonResponse(200, {
+      success: true,
+      doctors: store.doctors.filter(isRealDoctor),
       departments: store.departments,
       services: store.services,
       settings: store.settings,
       assets: store.assets,
+      source: isSupabaseConfigured() ? 'supabase_postgresql' : 'local_store',
       lastUpdated: store.lastUpdated
     });
   }
 
-  if (cleanPath === '/data/sync' && req.method === 'POST') {
+  // POST /api/data/sync (Admin full dataset sync / restore)
+  if (cleanPath === '/data/sync' && method === 'POST') {
     const auth = verifySessionToken(token);
     if (!auth.valid || !auth.user) {
       return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
     }
 
     const payload = req.body || {};
-    const store = ensureDataFile();
 
-    if (Array.isArray(payload.doctors)) store.doctors = payload.doctors.filter(isRealDoctor);
-    if (Array.isArray(payload.departments)) store.departments = payload.departments;
-    if (Array.isArray(payload.services)) store.services = payload.services;
-    if (payload.settings) store.settings = { ...store.settings, ...payload.settings };
-    if (Array.isArray(payload.assets)) store.assets = payload.assets;
+    if (isSupabaseConfigured()) {
+      try {
+        if (Array.isArray(payload.doctors)) {
+          for (const doc of payload.doctors.filter(isRealDoctor)) {
+            await upsertSupabaseDoctor(doc);
+          }
+        }
+        if (payload.settings && typeof payload.settings === 'object') {
+          await saveSupabaseSettings(payload.settings);
+        }
+      } catch (sbErr: any) {
+        console.warn('[CareOn API] Supabase full sync error:', sbErr.message);
+      }
+    }
 
-    store.lastUpdated = new Date().toISOString();
-    persistStore(store);
+    const store = await getLocalStore();
+    if (Array.isArray(payload.doctors)) {
+      store.doctors = payload.doctors.filter(isRealDoctor);
+    }
+    if (Array.isArray(payload.departments) && payload.departments.length > 0) {
+      store.departments = payload.departments;
+    }
+    if (Array.isArray(payload.services) && payload.services.length > 0) {
+      store.services = payload.services;
+    }
+    if (payload.settings && typeof payload.settings === 'object') {
+      store.settings = { ...store.settings, ...payload.settings };
+    }
+    if (Array.isArray(payload.assets) && payload.assets.length > 0) {
+      store.assets = payload.assets;
+    }
+
+    await persistLocalStore(store);
 
     return jsonResponse(200, {
       success: true,
-      message: 'Data successfully synchronized with server storage.',
+      message: 'Production database synchronized successfully.',
+      doctors: store.doctors.filter(isRealDoctor),
+      source: isSupabaseConfigured() ? 'supabase_postgresql' : 'local_store',
       lastUpdated: store.lastUpdated
     });
   }
 
-  // --- ASSETS MANIFEST ENDPOINT ---
-  if (cleanPath === '/assets' && req.method === 'GET') {
-    const store = ensureDataFile();
+  // GET /api/departments (List all clinical departments from Supabase or fallback)
+  if (cleanPath === '/departments' && method === 'GET') {
+    if (isSupabaseConfigured()) {
+      try {
+        const departments = await getSupabaseDepartments();
+        return jsonResponse(200, {
+          success: true,
+          departments,
+          source: 'supabase_postgresql'
+        });
+      } catch (sbErr: any) {
+        console.warn('[CareOn API] Supabase GET /departments note:', sbErr.message);
+      }
+    }
+
+    const store = await getLocalStore();
+    return jsonResponse(200, {
+      success: true,
+      departments: store.departments,
+      source: 'local_store'
+    });
+  }
+
+  // GET /api/services (List all clinical services from Supabase or fallback)
+  if (cleanPath === '/services' && method === 'GET') {
+    if (isSupabaseConfigured()) {
+      try {
+        const services = await getSupabaseServices();
+        return jsonResponse(200, {
+          success: true,
+          services,
+          source: 'supabase_postgresql'
+        });
+      } catch (sbErr: any) {
+        console.warn('[CareOn API] Supabase GET /services note:', sbErr.message);
+      }
+    }
+
+    const store = await getLocalStore();
+    return jsonResponse(200, {
+      success: true,
+      services: store.services,
+      source: 'local_store'
+    });
+  }
+
+  // GET /api/settings (Website settings from Supabase or fallback)
+  if (cleanPath === '/settings' && method === 'GET') {
+    if (isSupabaseConfigured()) {
+      try {
+        const settings = await getSupabaseSettings();
+        return jsonResponse(200, {
+          success: true,
+          settings,
+          source: 'supabase_postgresql'
+        });
+      } catch (sbErr: any) {
+        console.warn('[CareOn API] Supabase GET /settings note:', sbErr.message);
+      }
+    }
+
+    const store = await getLocalStore();
+    return jsonResponse(200, {
+      success: true,
+      settings: store.settings,
+      source: 'local_store'
+    });
+  }
+
+  // GET /api/assets (Media assets manifest)
+  if (cleanPath === '/assets' && method === 'GET') {
+    const store = await getLocalStore();
     return jsonResponse(200, {
       success: true,
       assets: store.assets || PROJECT_ASSETS_MANIFEST
     });
   }
 
-  return jsonResponse(404, { error: `Endpoint ${cleanPath} not found` });
+  return jsonResponse(404, { error: `Endpoint ${method} ${cleanPath} not found` });
 }

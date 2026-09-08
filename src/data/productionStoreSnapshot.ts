@@ -1,4 +1,6 @@
-{
+import { ServerStore } from '../server/apiHandler';
+
+export const INITIAL_PRODUCTION_STORE: ServerStore = {
   "doctors": [],
   "departments": [
     {
@@ -504,5 +506,5 @@
     }
   ],
   "invalidatedTokens": [],
-  "lastUpdated": "2026-09-02T16:18:16.622Z"
-}
+  "lastUpdated": "2026-09-02T20:02:26.366Z"
+};
