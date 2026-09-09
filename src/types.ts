@@ -193,6 +193,14 @@ export interface DoctorScheduleItem {
 }
 
 // Doctor Model
+export interface DoctorFees {
+  newPatient?: number;
+  followUp?: number;
+  emergency?: number;
+  telemedicine?: number;
+  other?: number;
+}
+
 export interface Doctor {
   id: string;
   name: string;
@@ -203,15 +211,29 @@ export interface Doctor {
   profilePhotoAssetId?: string;
   photoAssetId?: string;
   profilePhotoAlt?: string;
+  gender?: 'MALE' | 'FEMALE' | 'OTHER' | string;
   departmentId: string;
+  departmentName?: string;
   specialtyId?: string;
   designation: string;
+  doctorType?: string;
   qualification: string;
   registrationNumber?: string;
+  experienceYears?: number | string;
   schedules?: DoctorScheduleItem[];
   chamberId?: string;
   chamberCustom?: string;
   serviceIds?: string[];
+  serviceNames?: string[];
+  consultationFee?: number;
+  followUpFee?: number;
+  emergencyFee?: number;
+  telemedicineFee?: number;
+  otherServiceFee?: number;
+  fees?: DoctorFees;
+  appointmentDuration?: number;
+  bufferTime?: number;
+  maxAppointmentsPerSlot?: number;
   active?: boolean;
   published?: boolean;
   shortBio?: string;

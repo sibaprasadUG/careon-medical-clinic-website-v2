@@ -6,6 +6,8 @@ import {
   WebsiteSettings,
   DoctorScheduleItem,
   DoctorWeeklyScheduleSlot,
+  DoctorCustomSchedule,
+  DoctorScheduleException,
   DayOfWeek
 } from '../types';
 import { DEFAULT_DEPARTMENTS, DEFAULT_SERVICES, DEFAULT_WEBSITE_SETTINGS } from '../data/seedData';
@@ -144,6 +146,11 @@ export function mapRowToDoctor(row: any, schedules: any[] = []): Doctor {
   const chamberName = schedules.find((s) => s.doctor_id === row.id)?.chamber_name || 'CareOn Medical Clinic';
   const isActive = row.is_active !== false;
 
+  const { bio, meta } = parseDoctorBio(row.bio);
+  const consultationFee = row.consultation_fee
+    ? Number(row.consultation_fee)
+    : meta.fees?.newPatient;
+
   return {
     id: row.id,
     name: row.name,
@@ -157,25 +164,39 @@ export function mapRowToDoctor(row: any, schedules: any[] = []): Doctor {
     photoAssetId: '',
     profilePhotoAssetId: '',
     profilePhotoAlt: `Dr. ${row.name}`,
+    gender: meta.gender,
     departmentId: row.department_id || '',
+    departmentName: meta.departmentName || '',
     specialtyId: row.specialty || '',
     designation: row.doctor_type || 'Consultant',
+    doctorType: row.doctor_type || 'Consultant',
     qualification: row.qualification || 'MBBS',
     registrationNumber: row.registration_no || '',
-    shortBio: row.bio || '',
+    experienceYears: meta.experienceYears,
+    shortBio: bio,
     areasOfExpertise: row.specialty ? [row.specialty] : [],
     schedules: doctorSchedules,
     chamberId: chamberName,
     chamberCustom: chamberName,
-    serviceIds: [],
+    serviceIds: meta.serviceIds || [],
+    serviceNames: meta.serviceNames || [],
+    consultationFee,
+    followUpFee: meta.fees?.followUp,
+    emergencyFee: meta.fees?.emergency,
+    telemedicineFee: meta.fees?.telemedicine,
+    otherServiceFee: meta.fees?.other,
+    fees: meta.fees || (consultationFee ? { newPatient: consultationFee } : undefined),
+    appointmentDuration: meta.appointmentDuration ?? 30,
+    bufferTime: meta.bufferTime ?? 0,
+    maxAppointmentsPerSlot: meta.maxAppointmentsPerSlot,
     active: isActive,
     published: isActive,
     consultationDays,
     consultationTime,
     roomNumber: chamberName,
     weeklySchedule,
-    customSchedules: [],
-    scheduleExceptions: [],
+    customSchedules: meta.customSchedules || [],
+    scheduleExceptions: meta.scheduleExceptions || [],
     appointmentEnabled: isActive,
     featured: false,
     displayOrder: typeof row.display_order === 'number' ? row.display_order : 0,
@@ -185,7 +206,77 @@ export function mapRowToDoctor(row: any, schedules: any[] = []): Doctor {
   };
 }
 
+const META_TAG_START = '<!--CAREON_DOC_META:';
+const META_TAG_END = ':CAREON_DOC_META-->';
+
+export interface DoctorExtendedMeta {
+  gender?: string;
+  experienceYears?: number | string;
+  serviceIds?: string[];
+  serviceNames?: string[];
+  fees?: {
+    newPatient?: number;
+    followUp?: number;
+    emergency?: number;
+    telemedicine?: number;
+    other?: number;
+  };
+  customSchedules?: DoctorCustomSchedule[];
+  scheduleExceptions?: DoctorScheduleException[];
+  appointmentDuration?: number;
+  bufferTime?: number;
+  maxAppointmentsPerSlot?: number;
+  departmentName?: string;
+}
+
+export function parseDoctorBio(rawBio?: string | null): { bio: string; meta: DoctorExtendedMeta } {
+  if (!rawBio) return { bio: '', meta: {} };
+  const startIndex = rawBio.indexOf(META_TAG_START);
+  const endIndex = rawBio.indexOf(META_TAG_END);
+  if (startIndex >= 0 && endIndex > startIndex) {
+    const metaJson = rawBio.slice(startIndex + META_TAG_START.length, endIndex);
+    const cleanBio = (rawBio.slice(0, startIndex) + rawBio.slice(endIndex + META_TAG_END.length)).trim();
+    try {
+      const meta = JSON.parse(metaJson);
+      return { bio: cleanBio, meta: meta || {} };
+    } catch {
+      return { bio: rawBio.trim(), meta: {} };
+    }
+  }
+  return { bio: rawBio.trim(), meta: {} };
+}
+
+export function serializeDoctorBio(bio?: string | null, meta?: DoctorExtendedMeta): string | null {
+  const cleanBio = bio?.trim() || '';
+  const hasMeta = meta && Object.keys(meta).length > 0;
+  if (!hasMeta) {
+    return cleanBio || null;
+  }
+  const metaString = `${META_TAG_START}${JSON.stringify(meta)}${META_TAG_END}`;
+  return cleanBio ? `${cleanBio}\n\n${metaString}` : metaString;
+}
+
 export function mapDoctorToRow(doc: Partial<Doctor>): Record<string, any> {
+  const consultationFee =
+    typeof doc.consultationFee === 'number'
+      ? doc.consultationFee
+      : typeof doc.fees?.newPatient === 'number'
+      ? doc.fees.newPatient
+      : null;
+
+  const meta: DoctorExtendedMeta = {};
+  if (doc.gender) meta.gender = doc.gender;
+  if (doc.experienceYears) meta.experienceYears = doc.experienceYears;
+  if (doc.serviceIds && doc.serviceIds.length > 0) meta.serviceIds = doc.serviceIds;
+  if (doc.serviceNames && doc.serviceNames.length > 0) meta.serviceNames = doc.serviceNames;
+  if (doc.fees) meta.fees = doc.fees;
+  if (doc.customSchedules && doc.customSchedules.length > 0) meta.customSchedules = doc.customSchedules;
+  if (doc.scheduleExceptions && doc.scheduleExceptions.length > 0) meta.scheduleExceptions = doc.scheduleExceptions;
+  if (typeof doc.appointmentDuration === 'number') meta.appointmentDuration = doc.appointmentDuration;
+  if (typeof doc.bufferTime === 'number') meta.bufferTime = doc.bufferTime;
+  if (typeof doc.maxAppointmentsPerSlot === 'number') meta.maxAppointmentsPerSlot = doc.maxAppointmentsPerSlot;
+  if (doc.departmentName) meta.departmentName = doc.departmentName;
+
   const row: Record<string, any> = {
     name: doc.name?.trim() || '',
     department_id: isValidUuid(doc.departmentId) ? doc.departmentId : null,
@@ -193,9 +284,9 @@ export function mapDoctorToRow(doc: Partial<Doctor>): Record<string, any> {
     qualification: doc.qualification?.trim() || 'MBBS',
     registration_no: doc.registrationNumber?.trim() || null,
     photo_url: doc.profilePhotoUrl || doc.photoUrl || null,
-    consultation_fee: null,
-    doctor_type: doc.designation || 'Consultant',
-    bio: doc.shortBio?.trim() || null,
+    consultation_fee: consultationFee,
+    doctor_type: doc.doctorType || doc.designation || 'Consultant',
+    bio: serializeDoctorBio(doc.shortBio, meta),
     is_active: doc.status !== 'INACTIVE' && doc.active !== false,
     display_order: typeof doc.displayOrder === 'number' ? doc.displayOrder : 0,
     updated_at: new Date().toISOString()

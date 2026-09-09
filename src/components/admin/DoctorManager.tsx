@@ -4,6 +4,7 @@ import { apiClient } from '../../lib/apiClient';
 import { useAuth } from '../../lib/authContext';
 import { Doctor, ContentStatus } from '../../types';
 import { MASTER_DEPARTMENTS } from '../../data/medicalMasters';
+import { CAREON_DEPARTMENTS } from '../../data/doctorManagementConstants';
 import { DoctorFormModal } from './DoctorFormModal';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import { CareOnDoctorFallback } from '../common/CareOnMedia';
@@ -24,7 +25,11 @@ import {
   Server,
   AlertCircle,
   Copy,
-  Check
+  Check,
+  ArrowUp,
+  ArrowDown,
+  Layers,
+  Award
 } from 'lucide-react';
 
 export const DoctorManager: React.FC = () => {
@@ -188,17 +193,72 @@ export const DoctorManager: React.FC = () => {
   };
 
   // Toggle active status
-  const handleToggleStatus = (doc: Doctor) => {
+  const handleToggleStatus = async (doc: Doctor) => {
     if (!currentUser) return;
-    const nextStatus: ContentStatus = doc.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-    DataAccessLayer.toggleDoctorStatus(doc.id, nextStatus, currentUser);
-    loadDoctors();
+    const nextActive = !(doc.active !== false && doc.status === 'ACTIVE');
+    const nextStatus: ContentStatus = nextActive ? 'ACTIVE' : 'INACTIVE';
+    setIsSaving(true);
+    try {
+      await DataAccessLayer.saveDoctorAsync(
+        {
+          id: doc.id,
+          name: doc.name,
+          departmentId: doc.departmentId,
+          active: nextActive,
+          status: nextStatus
+        },
+        currentUser
+      );
+      await loadDoctors(true);
+      setSyncStatus({
+        message: `Doctor ${doc.name} set to ${nextActive ? 'Active' : 'Inactive'} in Supabase.`,
+        type: 'success'
+      });
+    } catch (err: any) {
+      alert(`Could not toggle status: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Reorder doctor priority
+  const handleMoveOrder = async (doc: Doctor, direction: 'up' | 'down') => {
+    if (!currentUser) return;
+    const currentIndex = doctors.findIndex((d) => d.id === doc.id);
+    if (currentIndex < 0) return;
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= doctors.length) return;
+
+    const reordered = [...doctors];
+    const temp = reordered[currentIndex];
+    reordered[currentIndex] = reordered[targetIndex];
+    reordered[targetIndex] = temp;
+
+    // Update display orders
+    setIsSaving(true);
+    try {
+      const updatedPromises = reordered.map((d, index) =>
+        DataAccessLayer.saveDoctorAsync(
+          { id: d.id, name: d.name, departmentId: d.departmentId, displayOrder: index + 1 },
+          currentUser
+        )
+      );
+      await Promise.all(updatedPromises);
+      await loadDoctors(true);
+      setSyncStatus({ message: 'Doctor display order updated in Supabase.', type: 'success' });
+    } catch (err: any) {
+      alert(`Error reordering doctors: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Get department display name
   const getDepartmentName = (deptId: string): string => {
-    const found = MASTER_DEPARTMENTS.find((d) => d.id === deptId);
-    return found ? found.name : deptId;
+    const fromMaster = MASTER_DEPARTMENTS.find((d) => d.id === deptId);
+    if (fromMaster) return fromMaster.name;
+    const fromCareOn = CAREON_DEPARTMENTS.find((d) => d.id === deptId || d.name.toLowerCase() === deptId.toLowerCase());
+    return fromCareOn ? fromCareOn.name : deptId;
   };
 
   // Format schedule text for card
@@ -500,17 +560,35 @@ export const DoctorManager: React.FC = () => {
                       {doctor.designation} • {doctor.qualification}
                     </p>
 
-                    {/* Department Tag */}
+                    {/* Department Tag, Doctor Type & Fees */}
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                       <span className="inline-block px-2 py-0.5 rounded-md bg-teal-50 text-teal-800 text-[10px] font-bold border border-teal-100 truncate max-w-[200px]">
                         {getDepartmentName(doctor.departmentId)}
                       </span>
+                      {doctor.doctorType && (
+                        <span className="inline-block px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold">
+                          {doctor.doctorType}
+                        </span>
+                      )}
+                      {(doctor.consultationFee !== undefined || doctor.fees?.newPatient !== undefined) && (
+                        <span className="inline-block px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 text-[10px] font-extrabold border border-emerald-200">
+                          ₹ {doctor.consultationFee ?? doctor.fees?.newPatient}
+                        </span>
+                      )}
                       {doctor.registrationNumber && (
                         <span className="text-[10px] text-slate-400 font-medium">
                           Reg: {doctor.registrationNumber}
                         </span>
                       )}
                     </div>
+
+                    {/* Associated Services */}
+                    {Array.isArray(doctor.serviceIds) && doctor.serviceIds.length > 0 && (
+                      <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
+                        <Layers className="w-3 h-3 text-[#007E70]" />
+                        <span>{doctor.serviceIds.length} clinical service{doctor.serviceIds.length === 1 ? '' : 's'} linked</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -528,11 +606,30 @@ export const DoctorManager: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Bottom Action Buttons */}
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-[11px] text-slate-400">
-                    ID: {doctor.id}
-                  </span>
+                {/* Bottom Action Buttons & Reordering */}
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleMoveOrder(doctor, 'up')}
+                      title="Move doctor up in display order"
+                      className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
+                    >
+                      <ArrowUp className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleMoveOrder(doctor, 'down')}
+                      title="Move doctor down in display order"
+                      className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
+                    >
+                      <ArrowDown className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-[10px] text-slate-400 font-mono ml-1">
+                      #{doctor.displayOrder ?? 1}
+                    </span>
+                  </div>
+
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -540,10 +637,10 @@ export const DoctorManager: React.FC = () => {
                         setDoctorToEdit(doctor);
                         setIsFormOpen(true);
                       }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold transition-colors cursor-pointer min-h-[36px]"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#007E70]/10 hover:bg-[#007E70]/20 text-[#007E70] rounded-lg text-xs font-bold transition-colors cursor-pointer min-h-[36px]"
                     >
-                      <Edit2 className="w-3.5 h-3.5 text-slate-600" />
-                      <span>Edit</span>
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span>Edit Doctor</span>
                     </button>
                     <button
                       type="button"

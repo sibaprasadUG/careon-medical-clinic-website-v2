@@ -83,14 +83,64 @@ export const DoctorProfileModal: React.FC<DoctorProfileModalProps> = ({
               <p className="text-xs text-slate-600 font-medium">
                 {doctor.qualification}
               </p>
-              {doctor.registrationNumber && (
-                <div className="inline-flex items-center gap-1.5 text-[11px] text-slate-500 font-mono bg-slate-100 px-2 py-0.5 rounded">
-                  <ShieldCheck className="w-3 h-3 text-[#007E70]" />
-                  <span>Reg No: {doctor.registrationNumber}</span>
+              {/* Badges: Doctor Type, Reg No, Experience */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                {doctor.doctorType && (
+                  <span className="px-2 py-0.5 bg-teal-50 text-teal-800 text-[10px] font-bold rounded-md border border-teal-100">
+                    {doctor.doctorType}
+                  </span>
+                )}
+                {doctor.experienceYears && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-semibold rounded-md">
+                    <Award className="w-3 h-3 text-amber-500" />
+                    <span>{doctor.experienceYears}+ {lang === 'en' ? 'Yrs Experience' : 'বছরের অভিজ্ঞতা'}</span>
+                  </span>
+                )}
+                {doctor.registrationNumber && (
+                  <div className="inline-flex items-center gap-1 text-[10px] text-slate-500 font-mono bg-slate-100 px-2 py-0.5 rounded-md">
+                    <ShieldCheck className="w-3 h-3 text-[#007E70]" />
+                    <span>Reg No: {doctor.registrationNumber}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Consultation Fees Card if configured */}
+          {(doctor.consultationFee !== undefined || doctor.fees?.newPatient !== undefined) && (
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                  {lang === 'en' ? 'Consultation Fee' : 'কনসালটেশন ফি'}
+                </span>
+                <span className="text-lg font-extrabold text-[#007E70]">
+                  ₹ {doctor.consultationFee ?? doctor.fees?.newPatient}
+                </span>
+              </div>
+
+              {(doctor.followUpFee !== undefined || doctor.fees?.followUp !== undefined) && (
+                <div className="text-right">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                    {lang === 'en' ? 'Follow-Up Fee' : 'ফলো-আপ ফি'}
+                  </span>
+                  <span className="text-xs font-bold text-slate-700">
+                    ₹ {doctor.followUpFee ?? doctor.fees?.followUp}
+                  </span>
+                </div>
+              )}
+
+              {(doctor.telemedicineFee !== undefined || doctor.fees?.telemedicine !== undefined) && (
+                <div className="text-right">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                    {lang === 'en' ? 'Telemedicine' : 'টেলিমেডিসিন'}
+                  </span>
+                  <span className="text-xs font-bold text-slate-700">
+                    ₹ {doctor.telemedicineFee ?? doctor.fees?.telemedicine}
+                  </span>
                 </div>
               )}
             </div>
-          </div>
+          )}
 
           {/* Consultation Schedule Card */}
           <div className="p-4 rounded-2xl bg-teal-50/80 border border-teal-200 space-y-2.5">
