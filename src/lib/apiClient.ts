@@ -308,8 +308,23 @@ export const apiClient = {
    * Permanently delete a media asset from both production database and Supabase Storage (Admin only).
    */
   async deleteAsset(
-    id: string,
-    options?: { force?: boolean }
+    idOrAsset:
+      | string
+      | {
+          id?: string;
+          fileName?: string;
+          storageKey?: string;
+          url?: string;
+          category?: string;
+          force?: boolean;
+        },
+    options?: {
+      force?: boolean;
+      storageKey?: string;
+      fileName?: string;
+      url?: string;
+      category?: string;
+    }
   ): Promise<{
     success: boolean;
     message?: string;
@@ -317,15 +332,33 @@ export const apiClient = {
     storageDeleted?: boolean;
     error?: string;
   }> {
-    const qStr = options?.force ? '?force=true' : '';
+    const isObj = typeof idOrAsset === 'object' && idOrAsset !== null;
+    const targetId: string = isObj ? String(idOrAsset.id || idOrAsset.fileName || '') : String(idOrAsset || '');
+    const mergedOptions = {
+      force: isObj ? idOrAsset.force ?? options?.force : options?.force,
+      fileName: isObj ? idOrAsset.fileName : options?.fileName,
+      storageKey: isObj ? idOrAsset.storageKey : options?.storageKey,
+      url: isObj ? idOrAsset.url : options?.url,
+      category: isObj ? idOrAsset.category : options?.category
+    };
+
+    const params = new URLSearchParams();
+    if (mergedOptions.force) params.set('force', 'true');
+    if (mergedOptions.fileName) params.set('fileName', mergedOptions.fileName);
+    if (mergedOptions.storageKey) params.set('storageKey', mergedOptions.storageKey);
+    if (mergedOptions.url) params.set('url', mergedOptions.url);
+    if (mergedOptions.category) params.set('category', mergedOptions.category);
+    const qStr = params.toString() ? `?${params.toString()}` : '';
+
     const res = await sendApiRequest<{
       success: boolean;
       message?: string;
       deletedAsset?: MediaAsset;
       storageDeleted?: boolean;
       error?: string;
-    }>(`/assets/${encodeURIComponent(id)}${qStr}`, {
+    }>(`/assets/${encodeURIComponent(targetId)}${qStr}`, {
       method: 'DELETE',
+      body: mergedOptions,
       requiresAuth: true
     });
 

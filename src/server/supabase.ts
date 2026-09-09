@@ -9,7 +9,8 @@ import {
   DoctorCustomSchedule,
   DoctorScheduleException,
   DayOfWeek,
-  MediaAsset
+  MediaAsset,
+  MediaCategory
 } from '../types';
 import { DEFAULT_DEPARTMENTS, DEFAULT_SERVICES, DEFAULT_WEBSITE_SETTINGS } from '../data/seedData';
 import { PROJECT_ASSETS_MANIFEST } from '../data/assetsManifest';
@@ -927,6 +928,15 @@ export async function saveSupabaseMediaAssets(assets: MediaAsset[]): Promise<boo
   }
 }
 
+export interface DeleteMediaAssetOptions {
+  id?: string;
+  fileName?: string;
+  storageKey?: string;
+  url?: string;
+  category?: string;
+  force?: boolean;
+}
+
 /**
  * Delete physical file from Supabase Storage.
  * Handles existing and legacy storage-path formats across candidate buckets.
@@ -997,8 +1007,9 @@ export async function deleteFileFromSupabaseStorage(asset: {
     candidatePaths.add(fn);
     candidatePaths.add(`assets/${fn}`);
 
-    if (asset.category) {
-      const cat = asset.category.toLowerCase();
+    // Category-specific and common paths
+    const cat = asset.category ? asset.category.toLowerCase() : '';
+    if (cat) {
       candidatePaths.add(`assets/${cat}s/${fn}`);
       candidatePaths.add(`assets/${cat}/${fn}`);
       candidatePaths.add(`${cat}s/${fn}`);
@@ -1006,6 +1017,15 @@ export async function deleteFileFromSupabaseStorage(asset: {
       candidatePaths.add(`careon/assets/${cat}/${fn}`);
       candidatePaths.add(`careon/assets/${cat}s/${fn}`);
     }
+
+    // Always check standard clinic directories
+    candidatePaths.add(`assets/doctors/${fn}`);
+    candidatePaths.add(`assets/departments/${fn}`);
+    candidatePaths.add(`assets/banners/${fn}`);
+    candidatePaths.add(`assets/gallery/${fn}`);
+    candidatePaths.add(`assets/logo/${fn}`);
+    candidatePaths.add(`doctors/${fn}`);
+    candidatePaths.add(`departments/${fn}`);
   }
 
   if (asset.url) {
@@ -1017,6 +1037,56 @@ export async function deleteFileFromSupabaseStorage(asset: {
         candidatePaths.add(match[2]);
       }
     }
+    // Also check if the URL ends with a filename
+    try {
+      const urlObj = new URL(asset.url);
+      const urlFileName = urlObj.pathname.split('/').pop();
+      if (urlFileName && urlFileName.includes('.')) {
+        candidatePaths.add(urlFileName);
+        candidatePaths.add(`assets/doctors/${urlFileName}`);
+        candidatePaths.add(`assets/departments/${urlFileName}`);
+        candidatePaths.add(`assets/banners/${urlFileName}`);
+        candidatePaths.add(`assets/gallery/${urlFileName}`);
+        candidatePaths.add(`assets/logo/${urlFileName}`);
+      }
+    } catch {
+      // Ignored
+    }
+  }
+
+  // Active storage directory scan for matching filename
+  const targetFn = (asset.fileName || '').trim().toLowerCase();
+  if (targetFn) {
+    const searchDirs = [
+      'assets/doctors',
+      'assets/departments',
+      'assets/banners',
+      'assets/gallery',
+      'assets/logo',
+      'assets',
+      'doctors',
+      ''
+    ];
+    for (const b of buckets) {
+      for (const dir of searchDirs) {
+        try {
+          const { data: listData } = await client.storage.from(b).list(dir, { limit: 100 });
+          if (listData && Array.isArray(listData)) {
+            for (const item of listData) {
+              if (item.name) {
+                const itemLower = item.name.toLowerCase();
+                if (itemLower === targetFn || itemLower.endsWith(`_${targetFn}`)) {
+                  const resolvedPath = dir ? `${dir}/${item.name}` : item.name;
+                  candidatePaths.add(resolvedPath);
+                }
+              }
+            }
+          }
+        } catch {
+          // Continue
+        }
+      }
+    }
   }
 
   const pathsList = Array.from(candidatePaths).filter(Boolean);
@@ -1024,7 +1094,7 @@ export async function deleteFileFromSupabaseStorage(asset: {
   const pathsAttempted: string[] = [];
 
   console.log(`[CareOn Storage] Initiating storage deletion for asset "${asset.fileName || asset.storageKey}"`);
-  console.log(`[CareOn Storage] Checking paths:`, pathsList);
+  console.log(`[CareOn Storage] Checking candidate paths:`, pathsList);
 
   for (const bucket of buckets) {
     for (const path of pathsList) {
@@ -1073,10 +1143,11 @@ export async function deleteFileFromSupabaseStorage(asset: {
 /**
  * Permanently delete a media asset from both Supabase PostgreSQL database and Supabase Storage.
  * ATOMIC GUARANTEE: If Supabase Storage removal fails, the database record is NOT deleted.
+ * ORPHAN RECOVERY: If the database record is missing, resolves storage path and removes physical file.
  */
 export async function deleteSupabaseMediaAsset(
-  assetIdOrKey: string,
-  force = false
+  target: string | DeleteMediaAssetOptions,
+  forceOption = false
 ): Promise<{
   success: boolean;
   error?: string;
@@ -1089,37 +1160,123 @@ export async function deleteSupabaseMediaAsset(
     return { success: false, error: 'Supabase client not initialized.' };
   }
 
-  console.log(`[CareOn Media DB] Starting permanent delete operation for: ${assetIdOrKey}`);
+  const options: DeleteMediaAssetOptions =
+    typeof target === 'string'
+      ? {
+          id: target,
+          fileName: target.includes('.') ? target.split('/').pop() : undefined,
+          storageKey: target.includes('/') ? target : undefined,
+          force: forceOption
+        }
+      : { ...target, force: target.force ?? forceOption };
 
-  // 1. Fetch current assets from database
-  const allAssets = await getSupabaseMediaAssets();
-  const asset =
-    allAssets.find((a) => a.id === assetIdOrKey) ||
-    allAssets.find((a) => a.fileName === assetIdOrKey) ||
-    allAssets.find((a) => a.storageKey === assetIdOrKey) ||
-    PROJECT_ASSETS_MANIFEST.find((a) => a.id === assetIdOrKey || a.fileName === assetIdOrKey);
+  const targetId = options.id?.trim() || '';
+  const targetFileName = options.fileName?.trim() || '';
+  const targetStorageKey = options.storageKey?.trim() || '';
+  const targetUrl = options.url?.trim() || '';
+  const targetCategory = options.category?.trim() || '';
+  const force = Boolean(options.force);
 
-  if (!asset) {
-    console.warn(`[CareOn Media DB] Asset not found for identifier: ${assetIdOrKey}`);
-    return { success: false, error: `Media asset "${assetIdOrKey}" not found in database.` };
+  console.log(`[CareOn Media DB] Starting permanent delete operation for:`, {
+    targetId,
+    targetFileName,
+    targetStorageKey,
+    force
+  });
+
+  // 1. Fetch current raw assets from database (without pre-filtering deleted_media_ids)
+  let rawDbAssets: MediaAsset[] = [];
+  try {
+    const { data: sData } = await client
+      .from('site_settings')
+      .select('setting_value')
+      .eq('setting_key', 'media_assets')
+      .maybeSingle();
+
+    if (sData?.setting_value) {
+      const parsed = JSON.parse(sData.setting_value);
+      if (Array.isArray(parsed)) {
+        rawDbAssets = parsed;
+      }
+    }
+  } catch (dbErr: any) {
+    console.warn(`[CareOn Media DB] Warning loading raw site_settings media_assets:`, dbErr.message);
   }
 
-  // 2. Safety reference check if not forced
+  // Also query active assets via standard getter as fallback
+  const activeAssets = await getSupabaseMediaAssets();
+  const pool = [...rawDbAssets, ...activeAssets, ...PROJECT_ASSETS_MANIFEST];
+
+  // Match asset from pool using ID, fileName, storageKey, or URL
+  const matchedAsset = pool.find((a) => {
+    if (targetId && (a.id === targetId || a.fileName === targetId || a.storageKey === targetId)) {
+      return true;
+    }
+    if (targetFileName && a.fileName.toLowerCase() === targetFileName.toLowerCase()) {
+      return true;
+    }
+    if (targetStorageKey && (a.storageKey === targetStorageKey || a.storageKey?.endsWith(targetStorageKey))) {
+      return true;
+    }
+    if (targetUrl && a.url === targetUrl) {
+      return true;
+    }
+    return false;
+  });
+
+  // Extract resolved metadata
+  const effectiveFileName =
+    targetFileName ||
+    matchedAsset?.fileName ||
+    (targetId.includes('.') ? targetId.split('/').pop() : '') ||
+    (targetStorageKey.includes('.') ? targetStorageKey.split('/').pop() : '') ||
+    'asset_file';
+
+  const effectiveStorageKey =
+    targetStorageKey ||
+    matchedAsset?.storageKey ||
+    (effectiveFileName ? `assets/doctors/${effectiveFileName}` : undefined);
+
+  const effectiveCategory = targetCategory || matchedAsset?.category || 'DOCTOR';
+  const effectiveUrl = targetUrl || matchedAsset?.url || '';
+
+  const effectiveAsset: MediaAsset = matchedAsset || {
+    id: targetId || `orphan-${Date.now()}`,
+    fileName: effectiveFileName,
+    originalName: effectiveFileName,
+    mimeType: effectiveFileName.endsWith('.svg') ? 'image/svg+xml' : 'image/jpeg',
+    category: effectiveCategory as MediaCategory,
+    url: effectiveUrl,
+    storageKey: effectiveStorageKey,
+    altText: effectiveFileName,
+    status: 'ACTIVE',
+    fileSize: 0,
+    version: 1,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    createdBy: 'admin',
+    updatedBy: 'admin'
+  };
+
+  // 2. Safety reference check against active doctors if not forced
   if (!force) {
     try {
       const { data: docs } = await client.from('doctors').select('id, name, photo_url');
-      const matches = docs?.filter(
-        (d) =>
-          d.photo_url?.includes(asset.fileName) ||
-          d.photo_url?.includes(asset.id) ||
-          (asset.storageKey && d.photo_url?.includes(asset.storageKey))
-      );
-      if (matches && matches.length > 0) {
-        const names = matches.map((d) => d.name).join(', ');
-        return {
-          success: false,
-          error: `Asset is referenced by active doctor(s): ${names}. Remove references or confirm forced delete.`
-        };
+      if (docs && Array.isArray(docs)) {
+        const matches = docs.filter((d) => {
+          if (!d.photo_url) return false;
+          if (effectiveFileName && d.photo_url.includes(effectiveFileName)) return true;
+          if (matchedAsset && (d.photo_url.includes(matchedAsset.fileName) || d.photo_url.includes(matchedAsset.id))) return true;
+          if (effectiveStorageKey && d.photo_url.includes(effectiveStorageKey)) return true;
+          return false;
+        });
+        if (matches.length > 0) {
+          const names = matches.map((d) => d.name).join(', ');
+          return {
+            success: false,
+            error: `Asset is referenced by active doctor(s): ${names}. Remove references or confirm forced delete.`
+          };
+        }
       }
     } catch {
       // Continue
@@ -1128,10 +1285,10 @@ export async function deleteSupabaseMediaAsset(
 
   // 3. STEP A: Delete the physical file from Supabase Storage
   const storageResult = await deleteFileFromSupabaseStorage({
-    storageKey: asset.storageKey,
-    fileName: asset.fileName,
-    category: asset.category,
-    url: asset.url
+    storageKey: effectiveStorageKey,
+    fileName: effectiveFileName,
+    category: effectiveCategory,
+    url: effectiveUrl
   });
 
   if (!storageResult.success) {
@@ -1143,28 +1300,46 @@ export async function deleteSupabaseMediaAsset(
   }
 
   // 4. STEP B: Delete the media record from production database (site_settings)
-  const remainingAssets = allAssets.filter(
-    (a) => a.id !== asset.id && a.fileName !== asset.fileName && a.storageKey !== asset.storageKey
-  );
+  const remainingAssets = rawDbAssets.filter((a) => {
+    if (targetId && a.id === targetId) return false;
+    if (matchedAsset && a.id === matchedAsset.id) return false;
+    if (effectiveFileName && a.fileName.toLowerCase() === effectiveFileName.toLowerCase()) return false;
+    if (effectiveStorageKey && a.storageKey === effectiveStorageKey) return false;
+    return true;
+  });
 
-  const dbSaved = await saveSupabaseMediaAssets(remainingAssets);
-  if (!dbSaved) {
-    console.error(`[CareOn Media DB] Failed to save updated media_assets array in Supabase site_settings.`);
-    return {
-      success: false,
-      error: 'Failed to update database record in Supabase site_settings.'
-    };
+  if (rawDbAssets.length > 0 && remainingAssets.length !== rawDbAssets.length) {
+    const dbSaved = await saveSupabaseMediaAssets(remainingAssets);
+    if (!dbSaved) {
+      console.error(`[CareOn Media DB] Failed to save updated media_assets array in Supabase site_settings.`);
+      return {
+        success: false,
+        error: 'Failed to update database record in Supabase site_settings.'
+      };
+    }
   }
 
-  // 5. STEP C: Add asset ID and key to deleted_media_ids to permanently prevent manifest resurrection
-  const blacklistKeys = [asset.id, asset.fileName, asset.storageKey].filter(Boolean) as string[];
+  // 5. STEP C: Add asset ID, filename, and storageKey to deleted_media_ids blacklist
+  const blacklistKeys = [
+    targetId,
+    targetFileName,
+    targetStorageKey,
+    effectiveFileName,
+    effectiveStorageKey,
+    matchedAsset?.id,
+    matchedAsset?.fileName,
+    matchedAsset?.storageKey
+  ].filter(Boolean) as string[];
+
   await recordSupabaseDeletedAssetId(blacklistKeys);
 
-  console.log(`[CareOn Media DB] Successfully deleted asset "${asset.fileName}" (${asset.id}). Physical storage deleted: ${storageResult.deletedCount > 0}`);
+  console.log(
+    `[CareOn Media DB] Successfully deleted asset "${effectiveFileName}". Physical storage deleted: ${storageResult.deletedCount > 0}`
+  );
 
   return {
     success: true,
-    deletedAsset: asset,
+    deletedAsset: effectiveAsset,
     storageDeleted: storageResult.deletedCount > 0,
     storageDetails: storageResult
   };

@@ -243,7 +243,7 @@ export const MediaLibrary: React.FC = () => {
     setIsDeleting(true);
     setDeleteError(null);
     try {
-      const res = await MediaStorageService.delete(asset.id, currentUser, true);
+      const res = await MediaStorageService.delete(asset, currentUser, true);
       if (!res.success) {
         setDeleteError(res.error || 'Failed to permanently delete asset.');
         showBanner(`Deletion failed: ${res.error || 'Server rejected deletion'}`);
@@ -267,9 +267,11 @@ export const MediaLibrary: React.FC = () => {
     if (!deleteWarning) return;
     const targetAsset = deleteWarning.asset;
     setIsDeleting(true);
+    setDeleteError(null);
     try {
-      const res = await MediaStorageService.delete(targetAsset.id, currentUser, true);
+      const res = await MediaStorageService.delete(targetAsset, currentUser, true);
       if (!res.success) {
+        setDeleteError(res.error || 'Failed to permanently delete asset.');
         showBanner(`Deletion failed: ${res.error || 'Server rejected deletion'}`);
         return;
       }
@@ -280,6 +282,7 @@ export const MediaLibrary: React.FC = () => {
       showBanner(`Asset "${targetAsset.fileName}" permanently deleted and storage reclaimed.`);
       setDeleteWarning(null);
     } catch (err: any) {
+      setDeleteError(err.message || 'An error occurred during deletion.');
       showBanner(`Deletion failed: ${err.message}`);
     } finally {
       setIsDeleting(false);
@@ -1289,6 +1292,12 @@ export const MediaLibrary: React.FC = () => {
               <p className="text-[11px] text-slate-400">
                 Deleting this file will force-delete the binary and reclaim storage ({formatBytes(deleteWarning.asset.fileSize)}). Fallback visuals will be shown.
               </p>
+
+              {deleteError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium">
+                  {deleteError}
+                </div>
+              )}
 
               <div className="flex items-center justify-center gap-2 pt-2">
                 <button

@@ -965,22 +965,27 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
     let assetId = '';
     if (cleanPath.startsWith('/assets/') && cleanPath.length > '/assets/'.length) {
       assetId = decodeURIComponent(cleanPath.slice('/assets/'.length));
-    } else if (req.query?.id) {
-      assetId = String(req.query.id);
-    } else if (req.body?.id) {
-      assetId = String(req.body.id);
     }
 
-    if (!assetId) {
-      return jsonResponse(400, { success: false, error: 'Asset ID or filename is required for deletion.' });
+    const query = req.query || {};
+    const body = req.body || {};
+
+    const targetId = assetId || String(query.id || body.id || '');
+    const fileName = String(query.fileName || body.fileName || '');
+    const storageKey = String(query.storageKey || body.storageKey || '');
+    const url = String(query.url || body.url || '');
+    const category = String(query.category || body.category || '');
+
+    if (!targetId && !fileName && !storageKey) {
+      return jsonResponse(400, { success: false, error: 'Asset ID, filename, or storageKey is required for deletion.' });
     }
 
     const force =
-      req.query?.force === 'true' ||
-      String(req.query?.force) === 'true' ||
-      req.body?.force === true;
+      query.force === 'true' ||
+      String(query.force) === 'true' ||
+      body.force === true;
 
-    console.log(`[CareOn API] Admin ${auth.user.email} initiated permanent deletion of asset: ${assetId} (force: ${force})`);
+    console.log(`[CareOn API] Admin ${auth.user.email} initiated permanent deletion of asset: ${targetId || fileName} (force: ${force})`);
 
     let deletedAsset: MediaAsset | undefined;
     let storageDeleted = false;
@@ -988,7 +993,14 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
 
     if (isSupabaseConfigured()) {
       try {
-        const result = await deleteSupabaseMediaAsset(assetId, force);
+        const result = await deleteSupabaseMediaAsset({
+          id: targetId,
+          fileName,
+          storageKey,
+          url,
+          category,
+          force
+        });
         if (!result.success) {
           console.error(`[CareOn API] Supabase media delete returned failure:`, result.error);
           return jsonResponse(400, {
@@ -1012,15 +1024,16 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
     try {
       const store = await getLocalStore();
       if (Array.isArray(store.assets)) {
-        const found = store.assets.find(
-          (a) => a.id === assetId || a.fileName === assetId || a.storageKey === assetId
-        );
+        const matchFn = (a: MediaAsset) =>
+          (targetId && (a.id === targetId || a.fileName === targetId || a.storageKey === targetId)) ||
+          (fileName && a.fileName.toLowerCase() === fileName.toLowerCase()) ||
+          (storageKey && a.storageKey === storageKey);
+
+        const found = store.assets.find(matchFn);
         if (!deletedAsset && found) {
           deletedAsset = found;
         }
-        store.assets = store.assets.filter(
-          (a) => a.id !== assetId && a.fileName !== assetId && a.storageKey !== assetId
-        );
+        store.assets = store.assets.filter((a) => !matchFn(a));
         await persistLocalStore(store);
       }
     } catch (storeErr: any) {
@@ -1029,7 +1042,7 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
 
     return jsonResponse(200, {
       success: true,
-      message: `Asset "${deletedAsset?.fileName || assetId}" permanently deleted from database and Supabase Storage.`,
+      message: `Asset "${deletedAsset?.fileName || targetId || fileName}" permanently deleted from database and Supabase Storage.`,
       deletedAsset,
       storageDeleted,
       storageDetails,

@@ -341,30 +341,50 @@ export const MediaStorageService = {
   },
 
   /**
-   * Delete an asset with safety checks
+   * Delete an asset with safety checks and atomic Supabase storage removal
    */
   async delete(
-    assetId: string,
+    target: string | MediaAsset,
     adminUser?: AdminUser | null,
     force = false
   ): Promise<{ success: boolean; error?: string }> {
-    const asset = DataAccessLayer.getMediaAssetById(assetId);
-    if (!asset) {
-      return { success: false, error: 'Asset not found.' };
+    let asset: MediaAsset | undefined;
+    let assetId = '';
+
+    if (typeof target === 'object' && target !== null) {
+      asset = target;
+      assetId = target.id;
+    } else {
+      assetId = String(target);
+      asset =
+        DataAccessLayer.getMediaAssetById(assetId) ||
+        DataAccessLayer.getAllMediaAssets().find(
+          (a) => a.id === assetId || a.fileName === assetId || a.storageKey === assetId
+        );
     }
 
-    const usage = DataAccessLayer.getAssetUsage(assetId);
-    if (usage.length > 0 && !force) {
-      const usageDescriptions = usage.map((u) => `${u.type}: ${u.name}`).join(', ');
-      return {
-        success: false,
-        error: `Cannot delete asset. It is actively referenced by: ${usageDescriptions}. Please replace or remove references first, or archive the asset.`
-      };
+    // Safety check for active references if not forced
+    if (assetId) {
+      const usage = DataAccessLayer.getAssetUsage(assetId);
+      if (usage.length > 0 && !force) {
+        const usageDescriptions = usage.map((u) => `${u.type}: ${u.name}`).join(', ');
+        return {
+          success: false,
+          error: `Cannot delete asset. It is actively referenced by: ${usageDescriptions}. Please replace or remove references first, or archive the asset.`
+        };
+      }
     }
 
     // Call server API for atomic deletion from Supabase Storage and PostgreSQL database
     try {
-      await apiClient.deleteAsset(assetId, { force });
+      await apiClient.deleteAsset({
+        id: assetId,
+        fileName: asset?.fileName,
+        storageKey: asset?.storageKey,
+        url: asset?.url,
+        category: asset?.category,
+        force
+      });
     } catch (apiErr: any) {
       console.error('[MediaStorageService] Server-side deletion failed:', apiErr.message);
       return {
@@ -374,7 +394,7 @@ export const MediaStorageService = {
     }
 
     // Delete binary payload from IndexedDB if present
-    if (asset.storageKey) {
+    if (asset?.storageKey) {
       try {
         await blobStore.delete(asset.storageKey);
       } catch {
@@ -382,7 +402,7 @@ export const MediaStorageService = {
       }
     }
 
-    return DataAccessLayer.deleteMediaAsset(assetId, adminUser, force);
+    return DataAccessLayer.deleteMediaAsset(assetId || asset?.fileName || '', adminUser, force);
   },
 
   /**

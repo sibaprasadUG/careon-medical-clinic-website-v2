@@ -139,13 +139,13 @@ export const DEFAULT_INSURANCE_PARTNERS: InsurancePartner[] = [
 // Initial Seed Media Assets for Doctor and Brand Assets
 export const DEFAULT_MEDIA_ASSETS: MediaAsset[] = [
   {
-    id: 'media-doc-01',
+    id: 'asset-doc-physician-consultant',
     fileName: 'consultant_physician.jpg',
     originalName: 'consultant_physician.jpg',
     mimeType: 'image/jpeg',
     category: 'DOCTOR',
     url: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=800',
-    storageKey: 'careon/assets/doctor/media-doc-01_consultant_physician.jpg',
+    storageKey: 'assets/doctors/consultant_physician.jpg',
     width: 800,
     height: 1000,
     fileSize: 184320,
@@ -158,17 +158,17 @@ export const DEFAULT_MEDIA_ASSETS: MediaAsset[] = [
     version: 1
   },
   {
-    id: 'media-doc-02',
-    fileName: 'consultant_paediatrician.jpg',
-    originalName: 'consultant_paediatrician.jpg',
+    id: 'asset-doc-pediatric-specialist',
+    fileName: 'pediatric_specialist.jpg',
+    originalName: 'pediatric_specialist.jpg',
     mimeType: 'image/jpeg',
     category: 'DOCTOR',
-    url: 'https://images.unsplash.com/photo-1594824813681-30c6f2a8a816?auto=format&fit=crop&q=80&w=800',
-    storageKey: 'careon/assets/doctor/media-doc-02_consultant_paediatrician.jpg',
+    url: 'https://images.unsplash.com/photo-1594824813580-ff61f9a2636a?auto=format&fit=crop&q=80&w=800',
+    storageKey: 'assets/doctors/pediatric_specialist.jpg',
     width: 800,
     height: 1000,
     fileSize: 198400,
-    altText: 'CareOn Consultant Paediatrician & Child Health Specialist',
+    altText: 'CareOn Senior Pediatric Specialist',
     status: 'ACTIVE',
     createdAt: '2026-08-27T08:00:00.000Z',
     updatedAt: '2026-08-27T08:00:00.000Z',
@@ -177,13 +177,13 @@ export const DEFAULT_MEDIA_ASSETS: MediaAsset[] = [
     version: 1
   },
   {
-    id: 'media-doc-03',
-    fileName: 'consultant_cardiologist.jpg',
-    originalName: 'consultant_cardiologist.jpg',
+    id: 'asset-doc-cardiologist',
+    fileName: 'cardiologist.jpg',
+    originalName: 'cardiologist.jpg',
     mimeType: 'image/jpeg',
     category: 'DOCTOR',
     url: 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=800',
-    storageKey: 'careon/assets/doctor/media-doc-03_consultant_cardiologist.jpg',
+    storageKey: 'assets/doctors/cardiologist.jpg',
     width: 800,
     height: 1000,
     fileSize: 212480,
@@ -196,13 +196,13 @@ export const DEFAULT_MEDIA_ASSETS: MediaAsset[] = [
     version: 1
   },
   {
-    id: 'media-doc-04',
-    fileName: 'consultant_gynaecologist.jpg',
-    originalName: 'consultant_gynaecologist.jpg',
+    id: 'asset-doc-gynecologist',
+    fileName: 'gynecologist.jpg',
+    originalName: 'gynecologist.jpg',
     mimeType: 'image/jpeg',
     category: 'DOCTOR',
     url: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=800',
-    storageKey: 'careon/assets/doctor/media-doc-04_consultant_gynaecologist.jpg',
+    storageKey: 'assets/doctors/gynecologist.jpg',
     width: 800,
     height: 1000,
     fileSize: 204800,
@@ -215,13 +215,13 @@ export const DEFAULT_MEDIA_ASSETS: MediaAsset[] = [
     version: 1
   },
   {
-    id: 'media-doc-05',
+    id: 'asset-doc-sougata-roy',
     fileName: 'dr_sougata_roy.jpg',
     originalName: 'dr_sougata_roy.jpg',
     mimeType: 'image/jpeg',
     category: 'DOCTOR',
     url: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=800',
-    storageKey: 'careon/assets/doctor/media-doc-05_dr_sougata_roy.jpg',
+    storageKey: 'assets/doctors/dr_sougata_roy.jpg',
     width: 800,
     height: 1000,
     fileSize: 189440,
@@ -1724,29 +1724,35 @@ export const DataAccessLayer = {
     force = false
   ): { success: boolean; error?: string } {
     const assets = this.getAllMediaAssets();
-    const asset = assets.find((a) => a.id === id);
-    if (!asset) {
-      return { success: false, error: 'Asset not found.' };
-    }
+    const asset =
+      assets.find((a) => a.id === id || a.fileName === id || a.storageKey === id) ||
+      PROJECT_ASSETS_MANIFEST.find((a) => a.id === id || a.fileName === id || a.storageKey === id) ||
+      DEFAULT_MEDIA_ASSETS.find((a) => a.id === id || a.fileName === id || a.storageKey === id);
 
-    const usage = this.getAssetUsage(id);
-    if (usage.length > 0 && !force) {
-      const names = usage.map((u) => `${u.type}: ${u.name}`).join(', ');
-      return {
-        success: false,
-        error: `Asset is referenced by active content: ${names}. Remove or replace references before deleting.`
-      };
+    if (asset && !force) {
+      const usage = this.getAssetUsage(asset.id);
+      if (usage.length > 0) {
+        const names = usage.map((u) => `${u.type}: ${u.name}`).join(', ');
+        return {
+          success: false,
+          error: `Asset is referenced by active content: ${names}. Remove or replace references before deleting.`
+        };
+      }
     }
 
     // Persistently blacklist asset id, filename, and storageKey
     const deletedIds = loadFromStorage<string[]>(STORAGE_KEYS.DELETED_MEDIA_IDS, []);
-    const keysToAdd = [id, asset.id, asset.fileName, asset.storageKey].filter(Boolean) as string[];
+    const keysToAdd = [id, asset?.id, asset?.fileName, asset?.storageKey].filter(Boolean) as string[];
     for (const k of keysToAdd) {
       if (!deletedIds.includes(k)) deletedIds.push(k);
     }
     saveToStorage(STORAGE_KEYS.DELETED_MEDIA_IDS, deletedIds);
 
-    const updated = assets.filter((a) => a.id !== id && a.fileName !== asset.fileName && a.storageKey !== asset.storageKey);
+    const updated = assets.filter(
+      (a) =>
+        a.id !== id &&
+        (!asset || (a.id !== asset.id && a.fileName !== asset.fileName && a.storageKey !== asset.storageKey))
+    );
     saveToStorage(STORAGE_KEYS.MEDIA_ASSETS, updated);
 
     recordAudit(
@@ -1754,8 +1760,8 @@ export const DataAccessLayer = {
       'MEDIA_DELETED',
       'MediaAsset',
       id,
-      asset.fileName,
-      `Permanently deleted asset ${asset.fileName} (${asset.category})`
+      asset?.fileName || id,
+      `Permanently deleted asset ${asset?.fileName || id} (${asset?.category || 'DOCTOR'})`
     );
 
     notifyDataChange('MediaAsset');
