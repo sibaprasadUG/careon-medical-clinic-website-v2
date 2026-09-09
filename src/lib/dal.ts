@@ -45,6 +45,7 @@ const STORAGE_KEYS = {
   SEO: 'careon_cms_seo',
   AUDIT_LOGS: 'careon_cms_audit_logs',
   MEDIA_ASSETS: 'careon_cms_media_assets',
+  DELETED_MEDIA_IDS: 'careon_cms_deleted_media_ids',
   INSURANCE_PARTNERS: 'careon_cms_insurance_partners'
 };
 
@@ -1580,28 +1581,67 @@ export const DataAccessLayer = {
 
   // --- MEDIA ASSETS ---
   getAllMediaAssets(): MediaAsset[] {
+    const deletedIds = new Set(loadFromStorage<string[]>(STORAGE_KEYS.DELETED_MEDIA_IDS, []));
     const stored = loadFromStorage<MediaAsset[]>(STORAGE_KEYS.MEDIA_ASSETS, DEFAULT_MEDIA_ASSETS);
     
     // Merge with Project Assets Manifest avoiding duplicate IDs or URLs
     const assetMap = new Map<string, MediaAsset>();
     
-    // 1. Seed & project assets manifest
+    // 1. Seed & project assets manifest (only if not marked permanently deleted)
     PROJECT_ASSETS_MANIFEST.forEach((a) => {
-      assetMap.set(a.id, a);
-      if (a.storageKey) assetMap.set(a.storageKey, a);
+      const isDeleted =
+        deletedIds.has(a.id) ||
+        (a.fileName && deletedIds.has(a.fileName)) ||
+        (a.storageKey && deletedIds.has(a.storageKey));
+      if (!isDeleted) {
+        assetMap.set(a.id, a);
+        if (a.storageKey) assetMap.set(a.storageKey, a);
+      }
     });
     
     DEFAULT_MEDIA_ASSETS.forEach((a) => {
-      assetMap.set(a.id, a);
+      const isDeleted =
+        deletedIds.has(a.id) ||
+        (a.fileName && deletedIds.has(a.fileName)) ||
+        (a.storageKey && deletedIds.has(a.storageKey));
+      if (!isDeleted) {
+        assetMap.set(a.id, a);
+      }
     });
 
     // 2. User-uploaded and edited assets
     stored.forEach((a) => {
-      assetMap.set(a.id, a);
+      const isDeleted =
+        deletedIds.has(a.id) ||
+        (a.fileName && deletedIds.has(a.fileName)) ||
+        (a.storageKey && deletedIds.has(a.storageKey));
+      if (!isDeleted) {
+        assetMap.set(a.id, a);
+      }
     });
 
     return Array.from(new Set(assetMap.values()))
+      .filter(
+        (a) =>
+          !deletedIds.has(a.id) &&
+          (!a.fileName || !deletedIds.has(a.fileName)) &&
+          (!a.storageKey || !deletedIds.has(a.storageKey))
+      )
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  async syncMediaAssetsWithServer(): Promise<MediaAsset[]> {
+    try {
+      const serverAssets = await apiClient.getAssets();
+      if (Array.isArray(serverAssets)) {
+        saveToStorage(STORAGE_KEYS.MEDIA_ASSETS, serverAssets);
+        notifyDataChange('MediaAsset');
+        return serverAssets;
+      }
+    } catch (err: any) {
+      console.warn('[CareOn DAL] syncMediaAssetsWithServer warning:', err.message);
+    }
+    return this.getAllMediaAssets();
   },
 
   getMediaAssetById(id: string): MediaAsset | undefined {
@@ -1698,7 +1738,15 @@ export const DataAccessLayer = {
       };
     }
 
-    const updated = assets.filter((a) => a.id !== id);
+    // Persistently blacklist asset id, filename, and storageKey
+    const deletedIds = loadFromStorage<string[]>(STORAGE_KEYS.DELETED_MEDIA_IDS, []);
+    const keysToAdd = [id, asset.id, asset.fileName, asset.storageKey].filter(Boolean) as string[];
+    for (const k of keysToAdd) {
+      if (!deletedIds.includes(k)) deletedIds.push(k);
+    }
+    saveToStorage(STORAGE_KEYS.DELETED_MEDIA_IDS, deletedIds);
+
+    const updated = assets.filter((a) => a.id !== id && a.fileName !== asset.fileName && a.storageKey !== asset.storageKey);
     saveToStorage(STORAGE_KEYS.MEDIA_ASSETS, updated);
 
     recordAudit(

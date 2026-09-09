@@ -1,5 +1,6 @@
 import { MediaAsset, MediaCategory, MediaAssetStatus, AdminUser } from '../types';
 import { DataAccessLayer } from './dal';
+import { apiClient } from './apiClient';
 
 // Maximum file size limits
 export const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -361,9 +362,24 @@ export const MediaStorageService = {
       };
     }
 
-    // Delete binary payload from storage
+    // Call server API for atomic deletion from Supabase Storage and PostgreSQL database
+    try {
+      await apiClient.deleteAsset(assetId, { force });
+    } catch (apiErr: any) {
+      console.error('[MediaStorageService] Server-side deletion failed:', apiErr.message);
+      return {
+        success: false,
+        error: apiErr.message || 'Server-side asset deletion failed. Physical storage and database were preserved.'
+      };
+    }
+
+    // Delete binary payload from IndexedDB if present
     if (asset.storageKey) {
-      await blobStore.delete(asset.storageKey);
+      try {
+        await blobStore.delete(asset.storageKey);
+      } catch {
+        // Ignored
+      }
     }
 
     return DataAccessLayer.deleteMediaAsset(assetId, adminUser, force);

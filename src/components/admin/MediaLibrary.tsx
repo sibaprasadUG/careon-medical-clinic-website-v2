@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Image as ImageIcon,
   Upload,
@@ -48,6 +48,17 @@ export const MediaLibrary: React.FC = () => {
   const [replaceAsset, setReplaceAsset] = useState<MediaAsset | null>(null);
   const [deleteWarning, setDeleteWarning] = useState<{ asset: MediaAsset; usage: any[] } | null>(null);
   const [deleteConfirmCandidate, setDeleteConfirmCandidate] = useState<MediaAsset | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Synchronize media assets with production server / Supabase PostgreSQL on mount
+  useEffect(() => {
+    DataAccessLayer.syncMediaAssetsWithServer().then((serverAssets) => {
+      if (serverAssets && serverAssets.length > 0) {
+        setAssets(serverAssets);
+      }
+    });
+  }, []);
 
   // Upload Form State
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -219,6 +230,7 @@ export const MediaLibrary: React.FC = () => {
 
   // Delete Handlers
   const initiateDelete = (asset: MediaAsset) => {
+    setDeleteError(null);
     const usage = DataAccessLayer.getAssetUsage(asset.id);
     if (usage.length > 0) {
       setDeleteWarning({ asset, usage });
@@ -227,21 +239,51 @@ export const MediaLibrary: React.FC = () => {
     }
   };
 
-  const handleExecutePermanentDelete = (asset: MediaAsset) => {
-    MediaStorageService.delete(asset.id, currentUser, true);
-    refreshList();
-    if (detailAsset?.id === asset.id) setDetailAsset(null);
-    setDeleteConfirmCandidate(null);
-    showBanner(`Asset "${asset.fileName}" permanently removed and storage reclaimed.`);
+  const handleExecutePermanentDelete = async (asset: MediaAsset) => {
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      const res = await MediaStorageService.delete(asset.id, currentUser, true);
+      if (!res.success) {
+        setDeleteError(res.error || 'Failed to permanently delete asset.');
+        showBanner(`Deletion failed: ${res.error || 'Server rejected deletion'}`);
+        return;
+      }
+      setAssets((prev) =>
+        prev.filter((a) => a.id !== asset.id && a.fileName !== asset.fileName && a.storageKey !== asset.storageKey)
+      );
+      if (detailAsset?.id === asset.id) setDetailAsset(null);
+      setDeleteConfirmCandidate(null);
+      showBanner(`Asset "${asset.fileName}" permanently removed and storage reclaimed.`);
+    } catch (err: any) {
+      setDeleteError(err.message || 'An error occurred during deletion.');
+      showBanner(`Deletion failed: ${err.message}`);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
-  const confirmForcedDelete = () => {
+  const confirmForcedDelete = async () => {
     if (!deleteWarning) return;
-    MediaStorageService.delete(deleteWarning.asset.id, currentUser, true);
-    refreshList();
-    if (detailAsset?.id === deleteWarning.asset.id) setDetailAsset(null);
-    showBanner(`Asset "${deleteWarning.asset.fileName}" permanently deleted and storage reclaimed.`);
-    setDeleteWarning(null);
+    const targetAsset = deleteWarning.asset;
+    setIsDeleting(true);
+    try {
+      const res = await MediaStorageService.delete(targetAsset.id, currentUser, true);
+      if (!res.success) {
+        showBanner(`Deletion failed: ${res.error || 'Server rejected deletion'}`);
+        return;
+      }
+      setAssets((prev) =>
+        prev.filter((a) => a.id !== targetAsset.id && a.fileName !== targetAsset.fileName && a.storageKey !== targetAsset.storageKey)
+      );
+      if (detailAsset?.id === targetAsset.id) setDetailAsset(null);
+      showBanner(`Asset "${targetAsset.fileName}" permanently deleted and storage reclaimed.`);
+      setDeleteWarning(null);
+    } catch (err: any) {
+      showBanner(`Deletion failed: ${err.message}`);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const copyUrl = (url: string, id: string) => {
@@ -1172,22 +1214,38 @@ export const MediaLibrary: React.FC = () => {
               </div>
             </div>
 
+            {deleteError && (
+              <div className="bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold p-3 rounded-2xl flex items-center gap-2 text-left">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
             <p className="text-[11px] text-slate-400">
-              This will remove the file from IndexedDB & local cache immediately to free up browser storage.
+              This will permanently delete the physical file from Supabase Storage and remove it from the production database.
             </p>
 
             <div className="flex items-center justify-center gap-2 pt-2">
               <button
                 onClick={() => setDeleteConfirmCandidate(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                disabled={isDeleting}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={() => handleExecutePermanentDelete(deleteConfirmCandidate)}
-                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl cursor-pointer shadow-xs font-sans"
+                disabled={isDeleting}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl cursor-pointer shadow-xs font-sans disabled:opacity-50 flex items-center gap-2"
               >
-                Delete Permanently & Free Storage
+                {isDeleting ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting & Freeing Storage...</span>
+                  </>
+                ) : (
+                  <span>Delete Permanently & Free Storage</span>
+                )}
               </button>
             </div>
           </div>
@@ -1235,15 +1293,24 @@ export const MediaLibrary: React.FC = () => {
               <div className="flex items-center justify-center gap-2 pt-2">
                 <button
                   onClick={() => setDeleteWarning(null)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                  disabled={isDeleting}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={confirmForcedDelete}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl cursor-pointer shadow-xs"
+                  disabled={isDeleting}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl cursor-pointer shadow-xs disabled:opacity-50 flex items-center gap-2"
                 >
-                  Force Delete & Free Storage
+                  {isDeleting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <span>Force Delete & Free Storage</span>
+                  )}
                 </button>
               </div>
             </div>

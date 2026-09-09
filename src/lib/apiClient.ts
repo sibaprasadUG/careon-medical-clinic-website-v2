@@ -287,5 +287,52 @@ export const apiClient = {
       requiresAuth: true
     });
     return Boolean(res.success);
+  },
+
+  // --- Media Asset Endpoints ---
+
+  /**
+   * Fetch all media assets from the production database.
+   */
+  async getAssets(): Promise<MediaAsset[]> {
+    const res = await sendApiRequest<{ success: boolean; assets: MediaAsset[]; error?: string }>('/assets', {
+      requiresAuth: false
+    });
+    if (!res.success || !Array.isArray(res.assets)) {
+      throw new ApiError(res.error || 'Failed to retrieve media assets', 500);
+    }
+    return res.assets;
+  },
+
+  /**
+   * Permanently delete a media asset from both production database and Supabase Storage (Admin only).
+   */
+  async deleteAsset(
+    id: string,
+    options?: { force?: boolean }
+  ): Promise<{
+    success: boolean;
+    message?: string;
+    deletedAsset?: MediaAsset;
+    storageDeleted?: boolean;
+    error?: string;
+  }> {
+    const qStr = options?.force ? '?force=true' : '';
+    const res = await sendApiRequest<{
+      success: boolean;
+      message?: string;
+      deletedAsset?: MediaAsset;
+      storageDeleted?: boolean;
+      error?: string;
+    }>(`/assets/${encodeURIComponent(id)}${qStr}`, {
+      method: 'DELETE',
+      requiresAuth: true
+    });
+
+    if (!res.success) {
+      throw new ApiError(res.error || 'Failed to delete media asset', 400);
+    }
+
+    return res;
   }
 };

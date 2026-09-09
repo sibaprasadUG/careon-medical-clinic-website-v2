@@ -17,7 +17,11 @@ import {
   getSupabaseServices,
   getSupabaseSettings,
   saveSupabaseSettings,
-  checkSupabaseHealth
+  checkSupabaseHealth,
+  getSupabaseMediaAssets,
+  deleteSupabaseMediaAsset,
+  saveSupabaseMediaAssets,
+  getSupabaseDeletedAssetIds
 } from './supabase';
 
 // Persistent data file paths for local server / container fallback
@@ -176,11 +180,12 @@ export async function persistLocalStore(store: ServerStore): Promise<void> {
 export async function getPersistentStore(): Promise<ServerStore> {
   if (isSupabaseConfigured()) {
     try {
-      const [doctors, departments, services, settings] = await Promise.all([
+      const [doctors, departments, services, settings, assets] = await Promise.all([
         getSupabaseDoctors(),
         getSupabaseDepartments(),
         getSupabaseServices(),
-        getSupabaseSettings()
+        getSupabaseSettings(),
+        getSupabaseMediaAssets()
       ]);
 
       const store: ServerStore = {
@@ -188,7 +193,7 @@ export async function getPersistentStore(): Promise<ServerStore> {
         departments: departments && departments.length > 0 ? departments : DEFAULT_DEPARTMENTS,
         services: services && services.length > 0 ? services : DEFAULT_SERVICES,
         settings: settings || DEFAULT_WEBSITE_SETTINGS,
-        assets: PROJECT_ASSETS_MANIFEST,
+        assets: assets && assets.length > 0 ? assets : PROJECT_ASSETS_MANIFEST,
         invalidatedTokens: inMemoryStore?.invalidatedTokens || [],
         lastUpdated: new Date().toISOString()
       };
@@ -342,7 +347,7 @@ export interface ApiResponse {
 export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
   const cleanPath = req.path.replace(/^\/api/, '').replace(/\/$/, '') || '/';
   const method = (req.method || 'GET').toUpperCase();
-  const authHeader = req.headers['authorization'] || req.headers['Authorization'] || '';
+  const authHeader = req.headers?.['authorization'] || req.headers?.['Authorization'] || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7).trim() : authHeader.trim();
 
   const jsonResponse = (statusCode: number, data: any): ApiResponse => ({
@@ -927,12 +932,108 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
     });
   }
 
-  // GET /api/assets (Media assets manifest)
+  // GET /api/assets (List all media assets from Supabase or fallback)
   if (cleanPath === '/assets' && method === 'GET') {
+    if (isSupabaseConfigured()) {
+      try {
+        const assets = await getSupabaseMediaAssets();
+        return jsonResponse(200, {
+          success: true,
+          assets,
+          source: 'supabase_postgresql'
+        });
+      } catch (sbErr: any) {
+        console.warn('[CareOn API] Supabase GET /assets note:', sbErr.message);
+      }
+    }
+
     const store = await getLocalStore();
     return jsonResponse(200, {
       success: true,
-      assets: store.assets || PROJECT_ASSETS_MANIFEST
+      assets: store.assets || PROJECT_ASSETS_MANIFEST,
+      source: 'local_store'
+    });
+  }
+
+  // DELETE /api/assets/:id or DELETE /api/assets (Permanent asset deletion from database & Supabase Storage)
+  if ((cleanPath === '/assets' || cleanPath.startsWith('/assets/')) && method === 'DELETE') {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    let assetId = '';
+    if (cleanPath.startsWith('/assets/') && cleanPath.length > '/assets/'.length) {
+      assetId = decodeURIComponent(cleanPath.slice('/assets/'.length));
+    } else if (req.query?.id) {
+      assetId = String(req.query.id);
+    } else if (req.body?.id) {
+      assetId = String(req.body.id);
+    }
+
+    if (!assetId) {
+      return jsonResponse(400, { success: false, error: 'Asset ID or filename is required for deletion.' });
+    }
+
+    const force =
+      req.query?.force === 'true' ||
+      String(req.query?.force) === 'true' ||
+      req.body?.force === true;
+
+    console.log(`[CareOn API] Admin ${auth.user.email} initiated permanent deletion of asset: ${assetId} (force: ${force})`);
+
+    let deletedAsset: MediaAsset | undefined;
+    let storageDeleted = false;
+    let storageDetails: any = null;
+
+    if (isSupabaseConfigured()) {
+      try {
+        const result = await deleteSupabaseMediaAsset(assetId, force);
+        if (!result.success) {
+          console.error(`[CareOn API] Supabase media delete returned failure:`, result.error);
+          return jsonResponse(400, {
+            success: false,
+            error: result.error || 'Failed to delete asset from production database and storage.'
+          });
+        }
+        deletedAsset = result.deletedAsset;
+        storageDeleted = Boolean(result.storageDeleted);
+        storageDetails = result.storageDetails;
+      } catch (err: any) {
+        console.error('[CareOn API] Fatal error in Supabase asset deletion:', err.message);
+        return jsonResponse(500, {
+          success: false,
+          error: `Storage/database deletion error: ${err.message}`
+        });
+      }
+    }
+
+    // Synchronize local fallback store
+    try {
+      const store = await getLocalStore();
+      if (Array.isArray(store.assets)) {
+        const found = store.assets.find(
+          (a) => a.id === assetId || a.fileName === assetId || a.storageKey === assetId
+        );
+        if (!deletedAsset && found) {
+          deletedAsset = found;
+        }
+        store.assets = store.assets.filter(
+          (a) => a.id !== assetId && a.fileName !== assetId && a.storageKey !== assetId
+        );
+        await persistLocalStore(store);
+      }
+    } catch (storeErr: any) {
+      console.warn('[CareOn API] Note syncing local store on asset delete:', storeErr.message);
+    }
+
+    return jsonResponse(200, {
+      success: true,
+      message: `Asset "${deletedAsset?.fileName || assetId}" permanently deleted from database and Supabase Storage.`,
+      deletedAsset,
+      storageDeleted,
+      storageDetails,
+      source: isSupabaseConfigured() ? 'supabase_postgresql' : 'local_store'
     });
   }
 
