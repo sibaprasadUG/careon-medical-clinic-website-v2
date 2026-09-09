@@ -74,7 +74,9 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
   const [formError, setFormError] = useState<string | null>(null);
 
   // Active items only
-  const activeDoctors = doctors.filter((d) => d.status === 'ACTIVE');
+  const activeDoctors = doctors.filter(
+    (d) => (d.status === 'ACTIVE' || d.active === true) && d.active !== false && d.appointmentEnabled !== false
+  );
   const activeServices = services.filter((s) => s.status === 'ACTIVE');
 
   // Filter services by category
@@ -587,6 +589,11 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
                           <span><strong>{lang === 'en' ? 'Routine Schedule:' : 'নিয়মিত সময়:'}</strong> {doctorScheduleSummary.scheduleText}</span>
                           <span><strong>{lang === 'en' ? 'Hours:' : 'সময়:'}</strong> {selectedDoc.consultationTime || doctorScheduleSummary.timeText}</span>
                           {selectedDoc.roomNumber && <span><strong>{lang === 'en' ? 'Chamber:' : 'চেম্বার:'}</strong> {selectedDoc.roomNumber}</span>}
+                          {(selectedDoc.consultationFee !== undefined || selectedDoc.fees?.newPatient !== undefined) && (
+                            <span className="text-[#007E70] font-extrabold">
+                              <strong>{lang === 'en' ? 'Fee:' : 'ফি:'}</strong> ₹ {selectedDoc.consultationFee ?? selectedDoc.fees?.newPatient}
+                            </span>
+                          )}
                         </div>
                       </div>
                     )}

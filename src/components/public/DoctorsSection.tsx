@@ -161,6 +161,11 @@ export const DoctorsSection: React.FC<DoctorsSectionProps> = ({
                             {lang === 'en' ? dept.name : dept.nameBn || dept.name}
                           </span>
                         )}
+                        {(doctor.consultationFee !== undefined || doctor.fees?.newPatient !== undefined) && (
+                          <span className="inline-block px-2 py-0.5 bg-emerald-50 text-emerald-800 text-[10px] font-extrabold rounded-md border border-emerald-200">
+                            ₹ {doctor.consultationFee ?? doctor.fees?.newPatient}
+                          </span>
+                        )}
                         <h3 className="text-base font-extrabold text-[#0F172A] leading-snug group-hover:text-[#007E70] transition-colors truncate">
                           {lang === 'en' ? doctor.name : doctor.nameBn || doctor.name}
                         </h3>
