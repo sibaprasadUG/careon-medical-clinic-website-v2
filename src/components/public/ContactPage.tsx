@@ -4,7 +4,6 @@ import {
   Phone,
   Mail,
   Clock,
-  MessageCircle,
   Calendar,
   Send,
   CheckCircle2,
@@ -15,6 +14,7 @@ import {
   Globe
 } from 'lucide-react';
 import { WebsiteSettings } from '../../types';
+import { WhatsAppIcon } from '../common/WhatsAppIcon';
 
 interface ContactPageProps {
   lang: 'en' | 'bn';
@@ -184,8 +184,8 @@ export const ContactPage: React.FC<ContactPageProps> = ({
               </div>
 
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-                <div className="flex items-center gap-2 text-[#0D9488] font-bold text-xs">
-                  <MessageCircle className="w-4 h-4" />
+                <div className="flex items-center gap-2 text-[#25D366] font-bold text-xs">
+                  <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
                   <span>WhatsApp</span>
                 </div>
                 <a

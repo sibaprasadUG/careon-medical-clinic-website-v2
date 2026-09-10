@@ -69,12 +69,27 @@ export const AppointmentRequestManager: React.FC = () => {
   // Cancellation Sub-modal
   const [cancelModalOpen, setCancelModalOpen] = useState<boolean>(false);
   const [cancellationReason, setCancellationReason] = useState<string>('Patient requested cancellation');
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   const loadData = () => {
     setAppointments(DataAccessLayer.getAllAppointmentRequests());
     setDoctors(DataAccessLayer.getAllDoctors());
     setServices(DataAccessLayer.getAllServices());
     setDepartments(DataAccessLayer.getAllDepartments());
+  };
+
+  const handleRefresh = async () => {
+    setIsSyncing(true);
+    try {
+      const serverAppts = await DataAccessLayer.fetchAppointmentsFromApi();
+      if (serverAppts) {
+        setAppointments(serverAppts);
+      }
+    } catch (err: any) {
+      console.warn('Failed to refresh appointments:', err.message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const getDoctorDepartmentName = (doc?: Doctor) => {
@@ -85,6 +100,7 @@ export const AppointmentRequestManager: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    handleRefresh();
     const handleUpdate = () => loadData();
     window.addEventListener('careon_data_updated', handleUpdate);
     return () => window.removeEventListener('careon_data_updated', handleUpdate);
@@ -457,8 +473,17 @@ export const AppointmentRequestManager: React.FC = () => {
           </p>
         </div>
 
-        {/* Status Counters */}
+        {/* Status Counters & Supabase Sync */}
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleRefresh}
+            disabled={isSyncing}
+            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+            title="Sync with production Supabase database"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-[#007E70]' : ''}`} />
+            <span>{isSyncing ? 'Syncing...' : 'Sync Supabase'}</span>
+          </button>
           <span className="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 text-xs font-bold border border-rose-200 flex items-center gap-1.5 shadow-2xs">
             <span className="w-2 h-2 rounded-full bg-rose-500"></span>
             {appointments.filter((a) => a.status === 'NEW').length} New Requests

@@ -10,7 +10,9 @@ import {
   DoctorScheduleException,
   DayOfWeek,
   MediaAsset,
-  MediaCategory
+  MediaCategory,
+  AppointmentRequest,
+  AppointmentStatus
 } from '../types';
 import { DEFAULT_DEPARTMENTS, DEFAULT_SERVICES, DEFAULT_WEBSITE_SETTINGS } from '../data/seedData';
 import { PROJECT_ASSETS_MANIFEST } from '../data/assetsManifest';
@@ -1320,4 +1322,341 @@ export async function deleteSupabaseMediaAsset(
     diagnostics: diagnosticLog
   };
 }
+
+/**
+ * Upload a file directly to Supabase Storage ('careon-media' bucket) and record metadata in PostgreSQL (site_settings)
+ * Implements full atomic transaction rollback: if DB insert fails, Storage file is removed.
+ */
+export async function uploadFileToSupabaseStorageAndSaveMetadata(options: {
+  fileBuffer: Buffer;
+  fileName: string;
+  mimeType: string;
+  category?: string;
+  altText?: string;
+  adminEmail?: string;
+  width?: number;
+  height?: number;
+}): Promise<{
+  success: boolean;
+  asset?: MediaAsset;
+  error?: string;
+}> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return {
+      success: false,
+      error: 'Supabase client is not configured or unavailable.'
+    };
+  }
+
+  const ALLOWED_MIMES = [
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/webp',
+    'image/svg+xml'
+  ];
+
+  const mime = (options.mimeType || 'image/jpeg').toLowerCase();
+  if (!ALLOWED_MIMES.includes(mime)) {
+    return {
+      success: false,
+      error: `Invalid file format (${mime}). Allowed types: JPG, PNG, WebP, SVG.`
+    };
+  }
+
+  // Max 5 MB
+  const MAX_BYTES = 5 * 1024 * 1024;
+  if (options.fileBuffer.length > MAX_BYTES) {
+    return {
+      success: false,
+      error: `File size exceeds the 5 MB maximum limit.`
+    };
+  }
+
+  const rawName = options.fileName || `upload-${Date.now()}`;
+  const ext = rawName.includes('.')
+    ? rawName.split('.').pop()!.toLowerCase()
+    : mime === 'image/png'
+    ? 'png'
+    : mime === 'image/webp'
+    ? 'webp'
+    : mime === 'image/svg+xml'
+    ? 'svg'
+    : 'jpg';
+  const baseName = rawName.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+  const safeFileName = `${baseName}.${ext}`;
+  const category = (options.category || 'CLINIC').toUpperCase() as MediaCategory;
+  const catFolder = category.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const uniqueId = `asset-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+  const storageKey = `assets/${catFolder}/${uniqueId}-${safeFileName}`;
+
+  // STEP 1: Upload to Supabase Storage bucket 'careon-media'
+  const { error: uploadError } = await client.storage
+    .from('careon-media')
+    .upload(storageKey, options.fileBuffer, {
+      contentType: mime,
+      upsert: true
+    });
+
+  if (uploadError) {
+    console.error('[CareOn Storage] Upload failed:', uploadError.message);
+    return {
+      success: false,
+      error: `Supabase Storage upload failed: ${uploadError.message}`
+    };
+  }
+
+  // STEP 2: Get public URL
+  const { data: pubData } = client.storage.from('careon-media').getPublicUrl(storageKey);
+  const publicUrl = pubData?.publicUrl || '';
+
+  const newAsset: MediaAsset = {
+    id: uniqueId,
+    fileName: safeFileName,
+    originalName: rawName,
+    mimeType: mime,
+    category,
+    url: publicUrl,
+    storageKey,
+    storageBucket: 'careon-media',
+    fileSize: options.fileBuffer.length,
+    width: options.width,
+    height: options.height,
+    altText: options.altText || `${baseName.replace(/[_-]/g, ' ')} - CareOn Medical Clinic`,
+    status: 'ACTIVE',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    createdBy: options.adminEmail || 'admin@careonclinic.com',
+    updatedBy: options.adminEmail || 'admin@careonclinic.com',
+    version: 1
+  };
+
+  // STEP 3: Save metadata in Supabase PostgreSQL (site_settings table, key 'media_assets')
+  try {
+    const existingAssets = await getSupabaseMediaAssets();
+    // Prepend new asset and remove duplicates
+    const updatedAssets = [
+      newAsset,
+      ...existingAssets.filter((a) => a.id !== newAsset.id && a.storageKey !== newAsset.storageKey)
+    ];
+    const saved = await saveSupabaseMediaAssets(updatedAssets);
+
+    if (!saved) {
+      // Rollback: delete the uploaded file from storage
+      await client.storage.from('careon-media').remove([storageKey]);
+      return {
+        success: false,
+        error: 'Failed to record asset metadata in Supabase database. Storage file was rolled back.'
+      };
+    }
+
+    console.log(
+      `[CareOn Production Upload] Successfully uploaded & registered asset: ${newAsset.id} (${storageKey})`
+    );
+    return {
+      success: true,
+      asset: newAsset
+    };
+  } catch (dbErr: any) {
+    // Rollback storage upload
+    await client.storage.from('careon-media').remove([storageKey]);
+    return {
+      success: false,
+      error: `Database metadata save failed: ${dbErr?.message || 'Unknown database error'}. Storage was rolled back.`
+    };
+  }
+}
+
+/**
+ * Fetch all appointments from Supabase PostgreSQL (site_settings table)
+ */
+export async function getSupabaseAppointments(): Promise<AppointmentRequest[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+
+  try {
+    const { data, error } = await client
+      .from('site_settings')
+      .select('setting_value')
+      .eq('setting_key', 'appointments')
+      .maybeSingle();
+
+    if (error) {
+      console.warn('[CareOn DB] Error loading appointments from site_settings:', error.message);
+      return [];
+    }
+
+    if (data?.setting_value) {
+      const parsed = JSON.parse(data.setting_value);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+    return [];
+  } catch (err: any) {
+    console.warn('[CareOn DB] Failed to parse appointments:', err.message);
+    return [];
+  }
+}
+
+/**
+ * Save appointments array to Supabase PostgreSQL (site_settings table)
+ */
+export async function saveSupabaseAppointments(appointments: AppointmentRequest[]): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) return false;
+
+  try {
+    const { error } = await client.from('site_settings').upsert(
+      {
+        setting_key: 'appointments',
+        setting_value: JSON.stringify(appointments),
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: 'setting_key' }
+    );
+    if (error) {
+      console.error('[CareOn DB] Error saving appointments to site_settings:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.error('[CareOn DB] Failed to save appointments:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Create a new appointment and persist into Supabase PostgreSQL
+ */
+export async function createSupabaseAppointment(
+  payload: Partial<AppointmentRequest>
+): Promise<{ success: boolean; appointment?: AppointmentRequest; error?: string }> {
+  if (!payload.patientName || !payload.patientName.trim()) {
+    return { success: false, error: 'Patient name is required.' };
+  }
+  const phone = payload.phone || payload.mobile || payload.patientPhone || '';
+  if (!phone || !phone.trim()) {
+    return { success: false, error: 'Phone number is required.' };
+  }
+
+  const existing = await getSupabaseAppointments();
+  const id =
+    payload.id && payload.id.startsWith('APT-')
+      ? payload.id
+      : `APT-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+  const now = new Date().toISOString();
+
+  const newAppt: AppointmentRequest = {
+    id,
+    requestType:
+      payload.requestType ||
+      (payload.bookingType === 'DOCTOR_CONSULTATION' || payload.doctorId ? 'DOCTOR' : 'SERVICE'),
+    bookingType: payload.bookingType || (payload.doctorId ? 'DOCTOR_CONSULTATION' : 'CLINIC_SERVICE'),
+    doctorId: payload.doctorId,
+    doctorName: payload.doctorName,
+    department: payload.department,
+    serviceId: payload.serviceId,
+    serviceName: payload.serviceName,
+    serviceType: payload.serviceType,
+    serviceMode: payload.serviceMode || 'CLINIC',
+    locationType: payload.locationType || (payload.serviceMode === 'HOME' ? 'HOME' : 'CLINIC'),
+    preferredDate: payload.preferredDate || payload.requestedDate || '',
+    preferredTime: payload.preferredTime || payload.requestedTimeWindow || '',
+    requestedDate: payload.requestedDate || payload.preferredDate || '',
+    requestedTimeWindow: payload.requestedTimeWindow || payload.preferredTime || '',
+    confirmedDate: payload.confirmedDate,
+    confirmedTime: payload.confirmedTime,
+    confirmedDoctorId: payload.confirmedDoctorId,
+    confirmedDoctorName: payload.confirmedDoctorName,
+    confirmedDepartment: payload.confirmedDepartment,
+    confirmedServiceId: payload.confirmedServiceId,
+    confirmedServiceName: payload.confirmedServiceName,
+    confirmedAt: payload.confirmedAt,
+    confirmedBy: payload.confirmedBy,
+    contactedAt: payload.contactedAt,
+    contactedBy: payload.contactedBy,
+    patientName: payload.patientName.trim(),
+    phone: phone.trim(),
+    mobile: phone.trim(),
+    patientPhone: phone.trim(),
+    email: payload.email?.trim() || payload.patientEmail?.trim(),
+    patientEmail: payload.patientEmail?.trim() || payload.email?.trim(),
+    address: payload.address?.trim(),
+    area: payload.area?.trim(),
+    landmark: payload.landmark?.trim(),
+    notes: payload.notes || payload.patientNotes || payload.reason,
+    patientNotes: payload.patientNotes || payload.notes || payload.reason,
+    reason: payload.reason || payload.notes,
+    status: payload.status || 'NEW',
+    adminNotes: payload.adminNotes || '',
+    createdAt: payload.createdAt || now,
+    updatedAt: now
+  };
+
+  const updated = [newAppt, ...existing.filter((a) => a.id !== newAppt.id)];
+  const saved = await saveSupabaseAppointments(updated);
+  if (!saved) {
+    return { success: false, error: 'Failed to persist appointment in Supabase PostgreSQL.' };
+  }
+
+  console.log(`[CareOn Production DB] Appointment saved in Supabase: ${newAppt.id} for ${newAppt.patientName}`);
+  return { success: true, appointment: newAppt };
+}
+
+/**
+ * Update an existing appointment in Supabase PostgreSQL
+ */
+export async function updateSupabaseAppointment(
+  id: string,
+  updates: Partial<AppointmentRequest>
+): Promise<{ success: boolean; appointment?: AppointmentRequest; error?: string }> {
+  if (!id) return { success: false, error: 'Appointment ID is required.' };
+
+  const existing = await getSupabaseAppointments();
+  const idx = existing.findIndex((a) => a.id === id);
+  if (idx === -1) {
+    return { success: false, error: `Appointment ${id} not found in database.` };
+  }
+
+  const current = existing[idx];
+  const updatedAppt: AppointmentRequest = {
+    ...current,
+    ...updates,
+    id: current.id, // Immutable ID
+    updatedAt: new Date().toISOString()
+  };
+
+  existing[idx] = updatedAppt;
+  const saved = await saveSupabaseAppointments(existing);
+  if (!saved) {
+    return { success: false, error: 'Failed to update appointment in Supabase PostgreSQL.' };
+  }
+
+  return { success: true, appointment: updatedAppt };
+}
+
+/**
+ * Delete an appointment from Supabase PostgreSQL
+ */
+export async function deleteSupabaseAppointment(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!id) return { success: false, error: 'Appointment ID is required.' };
+
+  const existing = await getSupabaseAppointments();
+  const remaining = existing.filter((a) => a.id !== id);
+  if (remaining.length === existing.length) {
+    return { success: false, error: `Appointment ${id} not found.` };
+  }
+
+  const saved = await saveSupabaseAppointments(remaining);
+  if (!saved) {
+    return { success: false, error: 'Failed to delete appointment from Supabase PostgreSQL.' };
+  }
+
+  return { success: true };
+}
+
 

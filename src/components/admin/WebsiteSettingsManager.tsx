@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { DataAccessLayer } from '../../lib/dal';
 import { useAuth } from '../../lib/authContext';
 import { WebsiteSettings, SocialLinksConfig, SocialPlatformConfig, MediaAsset, BrandSettings } from '../../types';
+import { WhatsAppIcon } from '../common/WhatsAppIcon';
 import {
   Settings,
   Building,
@@ -16,7 +17,6 @@ import {
   Facebook,
   Instagram,
   Youtube,
-  MessageCircle,
   Globe,
   ExternalLink,
   AlertCircle,
@@ -78,7 +78,7 @@ const SOCIAL_PLATFORMS: PlatformMeta[] = [
     key: 'whatsapp',
     name: 'WhatsApp Support',
     description: 'Direct Click-to-Chat with verified CareOn helpline (+91 9933335131)',
-    icon: MessageCircle,
+    icon: WhatsAppIcon,
     domainHint: 'wa.me or whatsapp.com',
     placeholder: 'https://wa.me/919933335131',
     defaultUrl: 'https://wa.me/919933335131'

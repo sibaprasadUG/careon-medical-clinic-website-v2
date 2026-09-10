@@ -3,11 +3,11 @@ import {
   HelpCircle,
   ChevronDown,
   Search,
-  MessageCircle,
   Phone,
   Sparkles
 } from 'lucide-react';
 import { FAQ, WebsiteSettings } from '../../types';
+import { WhatsAppIcon } from '../common/WhatsAppIcon';
 
 interface FAQSectionProps {
   faqs: FAQ[];
@@ -181,9 +181,9 @@ export const FAQSection: React.FC<FAQSectionProps> = ({
                 href={`https://wa.me/${cleanWhatsAppNumber}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-4 py-2 bg-teal-50 hover:bg-teal-100 text-[#007E70] text-xs font-bold rounded-xl border border-teal-200 flex items-center gap-1.5"
+                className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-[#007E70] text-xs font-bold rounded-xl border border-emerald-200 flex items-center gap-1.5"
               >
-                <MessageCircle className="w-3.5 h-3.5" />
+                <WhatsAppIcon className="w-3.5 h-3.5 text-[#25D366]" />
                 <span>WhatsApp</span>
               </a>
             )}

@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { Doctor, Department, Service, WebsiteSettings, MediaAsset, AdminUser } from '../types';
+import { Doctor, Department, Service, WebsiteSettings, MediaAsset, AdminUser, AppointmentRequest } from '../types';
 import { DEFAULT_DEPARTMENTS, DEFAULT_SERVICES, DEFAULT_WEBSITE_SETTINGS } from '../data/seedData';
 import { PROJECT_ASSETS_MANIFEST } from '../data/assetsManifest';
 import { INITIAL_PRODUCTION_STORE } from '../data/productionStoreSnapshot';
@@ -21,7 +21,13 @@ import {
   getSupabaseMediaAssets,
   deleteSupabaseMediaAsset,
   saveSupabaseMediaAssets,
-  getSupabaseDeletedAssetIds
+  getSupabaseDeletedAssetIds,
+  uploadFileToSupabaseStorageAndSaveMetadata,
+  getSupabaseAppointments,
+  saveSupabaseAppointments,
+  createSupabaseAppointment,
+  updateSupabaseAppointment,
+  deleteSupabaseAppointment
 } from './supabase';
 
 // Persistent data file paths for local server / container fallback
@@ -932,6 +938,153 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
     });
   }
 
+  // PUT or POST /api/settings/section-media (Update section media visual settings in Supabase & local store)
+  if ((cleanPath === '/settings/section-media' || cleanPath === '/section-media') && (method === 'PUT' || method === 'POST')) {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    const mediaUpdates = req.body || {};
+    if (typeof mediaUpdates !== 'object') {
+      return jsonResponse(400, { success: false, error: 'Invalid section media payload.' });
+    }
+
+    if (isSupabaseConfigured()) {
+      try {
+        const currentSettings = await getSupabaseSettings();
+        const mergedSettings: WebsiteSettings = {
+          ...currentSettings,
+          sectionMedia: {
+            ...(currentSettings.sectionMedia || {}),
+            ...mediaUpdates
+          }
+        };
+
+        const saved = await saveSupabaseSettings(mergedSettings);
+        if (!saved) {
+          return jsonResponse(500, {
+            success: false,
+            error: 'Failed to write updated section media to Supabase site_settings.'
+          });
+        }
+
+        // Keep local store in sync
+        try {
+          const store = await getLocalStore();
+          store.settings = mergedSettings;
+          await persistLocalStore(store);
+        } catch {}
+
+        return jsonResponse(200, {
+          success: true,
+          sectionMedia: mergedSettings.sectionMedia,
+          settings: mergedSettings,
+          message: 'Section media successfully saved and persisted to Supabase database.',
+          source: 'supabase_postgresql'
+        });
+      } catch (sbErr: any) {
+        console.error('[CareOn API] Supabase update section media error:', sbErr.message);
+        return jsonResponse(500, {
+          success: false,
+          error: `Failed to persist section media to Supabase: ${sbErr.message}`
+        });
+      }
+    }
+
+    // Local fallback
+    const store = await getLocalStore();
+    const current = store.settings || DEFAULT_WEBSITE_SETTINGS;
+    current.sectionMedia = {
+      ...(current.sectionMedia || {}),
+      ...mediaUpdates
+    };
+    store.settings = current;
+    await persistLocalStore(store);
+
+    return jsonResponse(200, {
+      success: true,
+      sectionMedia: current.sectionMedia,
+      settings: current,
+      message: 'Section media saved to local store.',
+      source: 'local_store'
+    });
+  }
+
+  // PUT or POST /api/settings (Update full or partial website settings in Supabase & local store)
+  if (cleanPath === '/settings' && (method === 'PUT' || method === 'POST')) {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    const updates = req.body || {};
+    if (typeof updates !== 'object') {
+      return jsonResponse(400, { success: false, error: 'Invalid settings payload.' });
+    }
+
+    if (isSupabaseConfigured()) {
+      try {
+        const currentSettings = await getSupabaseSettings();
+        const mergedSettings: WebsiteSettings = {
+          ...currentSettings,
+          ...updates,
+          sectionMedia: updates.sectionMedia !== undefined
+            ? { ...(currentSettings.sectionMedia || {}), ...updates.sectionMedia }
+            : currentSettings.sectionMedia,
+          brand: updates.brand !== undefined
+            ? { ...(currentSettings.brand || {}), ...updates.brand }
+            : currentSettings.brand,
+          socialLinks: updates.socialLinks !== undefined
+            ? { ...(currentSettings.socialLinks || {}), ...updates.socialLinks }
+            : currentSettings.socialLinks
+        };
+
+        const saved = await saveSupabaseSettings(mergedSettings);
+        if (!saved) {
+          return jsonResponse(500, {
+            success: false,
+            error: 'Failed to write updated settings to Supabase site_settings table.'
+          });
+        }
+
+        // Keep local store in sync
+        try {
+          const store = await getLocalStore();
+          store.settings = mergedSettings;
+          await persistLocalStore(store);
+        } catch {}
+
+        return jsonResponse(200, {
+          success: true,
+          settings: mergedSettings,
+          message: 'Website settings successfully saved and persisted to Supabase database.',
+          source: 'supabase_postgresql'
+        });
+      } catch (sbErr: any) {
+        console.error('[CareOn API] Supabase update settings error:', sbErr.message);
+        return jsonResponse(500, {
+          success: false,
+          error: `Failed to persist settings to Supabase: ${sbErr.message}`
+        });
+      }
+    }
+
+    // Local fallback
+    const store = await getLocalStore();
+    const current = store.settings || DEFAULT_WEBSITE_SETTINGS;
+    const merged = { ...current, ...updates };
+    store.settings = merged;
+    await persistLocalStore(store);
+
+    return jsonResponse(200, {
+      success: true,
+      settings: merged,
+      message: 'Website settings saved to local store.',
+      source: 'local_store'
+    });
+  }
+
   // GET /api/assets or GET /api/media (List all media assets from Supabase or fallback)
   if ((cleanPath === '/assets' || cleanPath === '/media') && method === 'GET') {
     if (isSupabaseConfigured()) {
@@ -953,6 +1106,115 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
       assets: store.assets || PROJECT_ASSETS_MANIFEST,
       source: 'local_store'
     });
+  }
+
+  // POST /api/assets/upload or POST /api/media/upload or POST /api/media (Media upload to Supabase Storage + Database)
+  const isMediaUpload =
+    (cleanPath === '/assets/upload' ||
+      cleanPath === '/media/upload' ||
+      cleanPath === '/media' ||
+      cleanPath === '/assets') &&
+    method === 'POST';
+
+  if (isMediaUpload) {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    const body = req.body || {};
+    const { fileName, fileData, mimeType, category, altText, width, height } = body;
+
+    if (!fileData) {
+      return jsonResponse(400, {
+        success: false,
+        error: 'File data is required (base64 encoded string).'
+      });
+    }
+
+    try {
+      const rawBase64 = String(fileData).includes(',')
+        ? String(fileData).split(',')[1]
+        : String(fileData);
+      const fileBuffer = Buffer.from(rawBase64, 'base64');
+
+      if (isSupabaseConfigured()) {
+        const uploadResult = await uploadFileToSupabaseStorageAndSaveMetadata({
+          fileBuffer,
+          fileName: fileName || `careon-upload-${Date.now()}.jpg`,
+          mimeType: mimeType || 'image/jpeg',
+          category: category || 'CLINIC',
+          altText: altText || '',
+          adminEmail: auth.user.email,
+          width,
+          height
+        });
+
+        if (!uploadResult.success) {
+          return jsonResponse(400, {
+            success: false,
+            error: uploadResult.error || 'Failed to upload asset to Supabase Storage.'
+          });
+        }
+
+        // Sync local store
+        try {
+          const store = await getLocalStore();
+          if (uploadResult.asset) {
+            store.assets = [uploadResult.asset, ...(store.assets || [])];
+            await persistLocalStore(store);
+          }
+        } catch {}
+
+        return jsonResponse(201, {
+          success: true,
+          asset: uploadResult.asset,
+          source: 'supabase_storage_postgresql'
+        });
+      }
+
+      // Fallback if Supabase is not configured
+      const uniqueId = `asset-${Date.now()}`;
+      const safeName = (fileName || `asset-${Date.now()}.jpg`).replace(/[^a-zA-Z0-9._-]/g, '_');
+      const fallbackAsset: MediaAsset = {
+        id: uniqueId,
+        fileName: safeName,
+        originalName: fileName || safeName,
+        mimeType: mimeType || 'image/jpeg',
+        category: (category as any) || 'CLINIC',
+        url: fileData.startsWith('data:')
+          ? fileData
+          : `data:${mimeType || 'image/jpeg'};base64,${rawBase64}`,
+        storageKey: `local/${safeName}`,
+        storageBucket: 'careon-media',
+        fileSize: fileBuffer.length,
+        width,
+        height,
+        altText: altText || safeName,
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        createdBy: auth.user.email,
+        updatedBy: auth.user.email,
+        version: 1
+      };
+
+      const store = await getLocalStore();
+      store.assets = [fallbackAsset, ...(store.assets || [])];
+      await persistLocalStore(store);
+
+      return jsonResponse(201, {
+        success: true,
+        asset: fallbackAsset,
+        source: 'local_store'
+      });
+    } catch (uploadErr: any) {
+      console.error('[CareOn API] Upload handling error:', uploadErr.message);
+      return jsonResponse(500, {
+        success: false,
+        error: `Upload processing failed: ${uploadErr.message}`
+      });
+    }
   }
 
   // DELETE /api/assets/:id or DELETE /api/media/:id (Permanent asset deletion from database & Supabase Storage)
@@ -1055,6 +1317,249 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
       storageDetails,
       diagnostics,
       source: isSupabaseConfigured() ? 'supabase_postgresql' : 'local_store'
+    });
+  }
+
+  // --- APPOINTMENT SYSTEM ENDPOINTS (Persists directly to Supabase PostgreSQL site_settings) ---
+
+  // 1. GET /api/appointments (List all appointment requests - Admin only)
+  if (cleanPath === '/appointments' && method === 'GET') {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    if (isSupabaseConfigured()) {
+      try {
+        const appointments = await getSupabaseAppointments();
+        return jsonResponse(200, {
+          success: true,
+          appointments,
+          total: appointments.length,
+          source: 'supabase_postgresql'
+        });
+      } catch (err: any) {
+        console.warn('[CareOn API] Supabase appointments load note:', err.message);
+      }
+    }
+
+    const store = await getLocalStore();
+    const appts = (store as any).appointments || [];
+    return jsonResponse(200, {
+      success: true,
+      appointments: appts,
+      total: appts.length,
+      source: 'local_store'
+    });
+  }
+
+  // 2. POST /api/appointments (Create/submit an appointment request - Public or Admin)
+  if (cleanPath === '/appointments' && method === 'POST') {
+    const payload = req.body || {};
+
+    if (!payload.patientName || !String(payload.patientName).trim()) {
+      return jsonResponse(400, { success: false, error: 'Patient name is required.' });
+    }
+    const phone = payload.phone || payload.mobile || payload.patientPhone || '';
+    if (!phone || !String(phone).trim()) {
+      return jsonResponse(400, { success: false, error: 'Valid phone number is required.' });
+    }
+
+    if (isSupabaseConfigured()) {
+      try {
+        const result = await createSupabaseAppointment(payload);
+        if (!result.success) {
+          return jsonResponse(400, { success: false, error: result.error });
+        }
+
+        // Sync local store
+        try {
+          const store = await getLocalStore();
+          (store as any).appointments = [
+            result.appointment,
+            ...(((store as any).appointments || []).filter((a: any) => a.id !== result.appointment?.id))
+          ];
+          await persistLocalStore(store);
+        } catch {}
+
+        return jsonResponse(201, {
+          success: true,
+          appointment: result.appointment,
+          message: 'Appointment request submitted successfully.',
+          source: 'supabase_postgresql'
+        });
+      } catch (err: any) {
+        console.error('[CareOn API] Supabase create appointment error:', err.message);
+        return jsonResponse(500, {
+          success: false,
+          error: `Database appointment error: ${err.message}`
+        });
+      }
+    }
+
+    // Local store fallback
+    const id = `APT-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const now = new Date().toISOString();
+    const newAppt: AppointmentRequest = {
+      id,
+      requestType: payload.requestType || (payload.doctorId ? 'DOCTOR' : 'SERVICE'),
+      bookingType:
+        payload.bookingType || (payload.doctorId ? 'DOCTOR_CONSULTATION' : 'CLINIC_SERVICE'),
+      doctorId: payload.doctorId,
+      doctorName: payload.doctorName,
+      department: payload.department,
+      serviceId: payload.serviceId,
+      serviceName: payload.serviceName,
+      serviceType: payload.serviceType,
+      serviceMode: payload.serviceMode || 'CLINIC',
+      locationType: payload.locationType || 'CLINIC',
+      preferredDate: payload.preferredDate || payload.requestedDate || '',
+      preferredTime: payload.preferredTime || payload.requestedTimeWindow || '',
+      requestedDate: payload.requestedDate || payload.preferredDate || '',
+      requestedTimeWindow: payload.requestedTimeWindow || payload.preferredTime || '',
+      patientName: String(payload.patientName).trim(),
+      phone: String(phone).trim(),
+      mobile: String(phone).trim(),
+      patientPhone: String(phone).trim(),
+      email: payload.email?.trim() || payload.patientEmail?.trim(),
+      address: payload.address?.trim(),
+      notes: payload.notes || payload.patientNotes || payload.reason,
+      status: payload.status || 'NEW',
+      adminNotes: payload.adminNotes || '',
+      createdAt: now,
+      updatedAt: now
+    };
+
+    const store = await getLocalStore();
+    (store as any).appointments = [
+      newAppt,
+      ...(((store as any).appointments || []).filter((a: any) => a.id !== id))
+    ];
+    await persistLocalStore(store);
+
+    return jsonResponse(201, {
+      success: true,
+      appointment: newAppt,
+      message: 'Appointment request submitted successfully.',
+      source: 'local_store'
+    });
+  }
+
+  // 3. PUT or PATCH /api/appointments/:id (Update appointment status, schedule, or notes - Admin only)
+  if (cleanPath.startsWith('/appointments/') && (method === 'PUT' || method === 'PATCH')) {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    const apptId = decodeURIComponent(cleanPath.slice('/appointments/'.length));
+    if (!apptId) {
+      return jsonResponse(400, { success: false, error: 'Appointment ID is required.' });
+    }
+
+    const updates = req.body || {};
+
+    if (isSupabaseConfigured()) {
+      try {
+        const result = await updateSupabaseAppointment(apptId, updates);
+        if (!result.success) {
+          return jsonResponse(400, { success: false, error: result.error });
+        }
+
+        // Sync local store
+        try {
+          const store = await getLocalStore();
+          const list = (store as any).appointments || [];
+          const idx = list.findIndex((a: any) => a.id === apptId);
+          if (idx !== -1) {
+            list[idx] = result.appointment;
+            (store as any).appointments = list;
+            await persistLocalStore(store);
+          }
+        } catch {}
+
+        return jsonResponse(200, {
+          success: true,
+          appointment: result.appointment,
+          source: 'supabase_postgresql'
+        });
+      } catch (err: any) {
+        console.error('[CareOn API] Supabase update appointment error:', err.message);
+        return jsonResponse(500, {
+          success: false,
+          error: `Database appointment error: ${err.message}`
+        });
+      }
+    }
+
+    // Local fallback
+    const store = await getLocalStore();
+    const list = (store as any).appointments || [];
+    const idx = list.findIndex((a: any) => a.id === apptId);
+    if (idx === -1) {
+      return jsonResponse(404, { success: false, error: `Appointment ${apptId} not found.` });
+    }
+
+    const updated = { ...list[idx], ...updates, id: apptId, updatedAt: new Date().toISOString() };
+    list[idx] = updated;
+    (store as any).appointments = list;
+    await persistLocalStore(store);
+
+    return jsonResponse(200, {
+      success: true,
+      appointment: updated,
+      source: 'local_store'
+    });
+  }
+
+  // 4. DELETE /api/appointments/:id (Delete appointment - Admin only)
+  if (cleanPath.startsWith('/appointments/') && method === 'DELETE') {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    const apptId = decodeURIComponent(cleanPath.slice('/appointments/'.length));
+    if (!apptId) {
+      return jsonResponse(400, { success: false, error: 'Appointment ID is required.' });
+    }
+
+    if (isSupabaseConfigured()) {
+      try {
+        const result = await deleteSupabaseAppointment(apptId);
+        if (!result.success) {
+          return jsonResponse(400, { success: false, error: result.error });
+        }
+
+        // Sync local store
+        try {
+          const store = await getLocalStore();
+          (store as any).appointments = ((store as any).appointments || []).filter(
+            (a: any) => a.id !== apptId
+          );
+          await persistLocalStore(store);
+        } catch {}
+
+        return jsonResponse(200, {
+          success: true,
+          message: `Appointment ${apptId} deleted successfully.`,
+          source: 'supabase_postgresql'
+        });
+      } catch (err: any) {
+        return jsonResponse(500, { success: false, error: err.message });
+      }
+    }
+
+    const store = await getLocalStore();
+    (store as any).appointments = ((store as any).appointments || []).filter(
+      (a: any) => a.id !== apptId
+    );
+    await persistLocalStore(store);
+
+    return jsonResponse(200, {
+      success: true,
+      message: `Appointment ${apptId} deleted.`,
+      source: 'local_store'
     });
   }
 

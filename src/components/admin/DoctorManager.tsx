@@ -666,6 +666,11 @@ export const DoctorManager: React.FC = () => {
           setDoctorToEdit(null);
         }}
         onSave={handleSaveDoctor}
+        onDelete={(doc) => {
+          setIsFormOpen(false);
+          setDoctorToEdit(null);
+          setDoctorToDelete(doc);
+        }}
         initialData={doctorToEdit}
       />
 

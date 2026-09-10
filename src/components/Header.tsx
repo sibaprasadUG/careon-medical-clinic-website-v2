@@ -1,5 +1,6 @@
 import React from 'react';
-import { MessageCircle, Calendar, Phone, Stethoscope, ChevronRight, Lock, ShieldCheck } from 'lucide-react';
+import { Calendar, Phone, Stethoscope, ChevronRight, Lock, ShieldCheck } from 'lucide-react';
+import { WhatsAppIcon } from './common/WhatsAppIcon';
 import { BRAND_CONSTANTS } from '../data/architectureData';
 
 interface HeaderProps {
@@ -117,10 +118,10 @@ export const Header: React.FC<HeaderProps> = ({
             href={`https://wa.me/${BRAND_CONSTANTS.whatsapp.replace(/[^0-9]/g, '')}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[#007E70] bg-teal-50 hover:bg-teal-100/80 border border-teal-200/80 rounded-lg transition-colors"
+            className="inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[#007E70] bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200/80 rounded-lg transition-colors"
             title="Chat with CareOn Help Desk on WhatsApp"
           >
-            <MessageCircle className="w-4 h-4 text-[#0D9488]" />
+            <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
             <span className="hidden sm:inline">WhatsApp</span>
           </a>
 

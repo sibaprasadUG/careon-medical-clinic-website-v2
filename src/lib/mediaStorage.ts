@@ -245,9 +245,6 @@ export const MediaStorageService = {
     const assetId = `media-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const storageKey = `careon/assets/${metadata.category.toLowerCase()}/${assetId}_${cleanFileName}`;
 
-    // Store binary payload in persistent IndexedDB store
-    await blobStore.set(storageKey, dataUrl);
-
     // Generate clean Alt Text default if not specified
     let defaultAlt = metadata.altText;
     if (!defaultAlt) {
@@ -261,6 +258,29 @@ export const MediaStorageService = {
         defaultAlt = cleanFileName.replace(/[_-]/g, ' ').replace(/\.[^.]+$/, '');
       }
     }
+
+    // Attempt direct upload to server (Supabase Storage + Database)
+    try {
+      const serverAsset = await apiClient.uploadAsset({
+        fileName: cleanFileName,
+        fileData: dataUrl,
+        mimeType,
+        category: metadata.category,
+        altText: defaultAlt,
+        width,
+        height
+      });
+      if (serverAsset && serverAsset.url) {
+        await blobStore.set(storageKey, dataUrl);
+        DataAccessLayer.saveMediaAsset(serverAsset, adminUser);
+        return serverAsset;
+      }
+    } catch (serverErr: any) {
+      console.warn('[MediaStorageService] Server upload failed, falling back to local store:', serverErr.message);
+    }
+
+    // Store binary payload in persistent IndexedDB store
+    await blobStore.set(storageKey, dataUrl);
 
     const newAsset: MediaAsset = {
       id: assetId,

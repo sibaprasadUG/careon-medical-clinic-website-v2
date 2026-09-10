@@ -1,4 +1,4 @@
-import { Doctor, Department, Service, WebsiteSettings, MediaAsset } from '../types';
+import { Doctor, Department, Service, WebsiteSettings, MediaAsset, AppointmentRequest } from '../types';
 
 /**
  * Universal API Client for CareOn Medical Clinic
@@ -367,5 +367,173 @@ export const apiClient = {
     }
 
     return res;
+  },
+
+  /**
+   * Upload an asset directly to Supabase Storage and register in database (Admin only)
+   */
+  async uploadAsset(payload: {
+    fileName: string;
+    fileData: string; // base64 string or Data URL
+    mimeType: string;
+    category?: string;
+    altText?: string;
+    width?: number;
+    height?: number;
+  }): Promise<MediaAsset> {
+    const res = await sendApiRequest<{
+      success: boolean;
+      asset?: MediaAsset;
+      error?: string;
+    }>('/assets/upload', {
+      method: 'POST',
+      body: payload,
+      requiresAuth: true
+    });
+    if (!res.success || !res.asset) {
+      throw new ApiError(res.error || 'Failed to upload media asset to server', 400);
+    }
+    return res.asset;
+  },
+
+  /**
+   * Get all appointment requests from production Supabase database (Admin only)
+   */
+  async getAppointments(): Promise<AppointmentRequest[]> {
+    const res = await sendApiRequest<{
+      success: boolean;
+      appointments: AppointmentRequest[];
+      error?: string;
+    }>('/appointments', {
+      method: 'GET',
+      requiresAuth: true
+    });
+    if (!res.success || !Array.isArray(res.appointments)) {
+      throw new ApiError(res.error || 'Failed to fetch appointments', 500);
+    }
+    return res.appointments;
+  },
+
+  /**
+   * Submit an appointment request to production Supabase database (Public or Admin)
+   */
+  async createAppointment(data: Partial<AppointmentRequest>): Promise<AppointmentRequest> {
+    const res = await sendApiRequest<{
+      success: boolean;
+      appointment: AppointmentRequest;
+      error?: string;
+    }>('/appointments', {
+      method: 'POST',
+      body: data,
+      requiresAuth: false
+    });
+    if (!res.success || !res.appointment) {
+      throw new ApiError(res.error || 'Failed to submit appointment request', 400);
+    }
+    return res.appointment;
+  },
+
+  /**
+   * Update an appointment request in production Supabase database (Admin only)
+   */
+  async updateAppointment(
+    id: string,
+    updates: Partial<AppointmentRequest>
+  ): Promise<AppointmentRequest> {
+    const res = await sendApiRequest<{
+      success: boolean;
+      appointment: AppointmentRequest;
+      error?: string;
+    }>(`/appointments/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: updates,
+      requiresAuth: true
+    });
+    if (!res.success || !res.appointment) {
+      throw new ApiError(res.error || 'Failed to update appointment', 400);
+    }
+    return res.appointment;
+  },
+
+  /**
+   * Delete an appointment request from production Supabase database (Admin only)
+   */
+  async deleteAppointment(id: string): Promise<boolean> {
+    const res = await sendApiRequest<{
+      success: boolean;
+      message?: string;
+      error?: string;
+    }>(`/appointments/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      requiresAuth: true
+    });
+    if (!res.success) {
+      throw new ApiError(res.error || 'Failed to delete appointment', 400);
+    }
+    return true;
+  },
+
+  // --- Website & Section Media Settings Endpoints ---
+
+  /**
+   * Fetch current website settings from production Supabase database
+   */
+  async getSettings(): Promise<WebsiteSettings> {
+    const res = await sendApiRequest<{
+      success: boolean;
+      settings: WebsiteSettings;
+      source?: string;
+      error?: string;
+    }>('/settings', {
+      method: 'GET',
+      requiresAuth: false
+    });
+    if (!res.success || !res.settings) {
+      throw new ApiError(res.error || 'Failed to fetch website settings', 500);
+    }
+    return res.settings;
+  },
+
+  /**
+   * Update full or partial website settings in production Supabase database
+   */
+  async updateSettings(settingsData: Partial<WebsiteSettings>): Promise<WebsiteSettings> {
+    const res = await sendApiRequest<{
+      success: boolean;
+      settings: WebsiteSettings;
+      source?: string;
+      message?: string;
+      error?: string;
+    }>('/settings', {
+      method: 'PUT',
+      body: settingsData,
+      requiresAuth: true
+    });
+    if (!res.success || !res.settings) {
+      throw new ApiError(res.error || 'Failed to update website settings', 400);
+    }
+    return res.settings;
+  },
+
+  /**
+   * Update section media visual settings in production Supabase database
+   */
+  async updateSectionMedia(sectionMedia: SectionMediaSettings): Promise<WebsiteSettings> {
+    const res = await sendApiRequest<{
+      success: boolean;
+      sectionMedia: SectionMediaSettings;
+      settings: WebsiteSettings;
+      source?: string;
+      message?: string;
+      error?: string;
+    }>('/settings/section-media', {
+      method: 'PUT',
+      body: sectionMedia,
+      requiresAuth: true
+    });
+    if (!res.success || !res.settings) {
+      throw new ApiError(res.error || 'Failed to update section media settings', 400);
+    }
+    return res.settings;
   }
 };

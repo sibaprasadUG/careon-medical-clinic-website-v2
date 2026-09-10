@@ -15,7 +15,7 @@ function careonApiPlugin(): Plugin {
 
         try {
           let body: any = undefined;
-          if (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE') {
+          if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH' || req.method === 'DELETE') {
             const buffers: Buffer[] = [];
             for await (const chunk of req) {
               buffers.push(chunk as Buffer);
@@ -60,7 +60,7 @@ function careonApiPlugin(): Plugin {
 
         try {
           let body: any = undefined;
-          if (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE') {
+          if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH' || req.method === 'DELETE') {
             const buffers: Buffer[] = [];
             for await (const chunk of req) {
               buffers.push(chunk as Buffer);

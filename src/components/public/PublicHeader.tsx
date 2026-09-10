@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   Phone,
-  MessageCircle,
   Calendar,
   Menu,
   X,
@@ -18,6 +17,7 @@ import {
 } from 'lucide-react';
 import { WebsiteSettings } from '../../types';
 import { CareOnLogo } from '../common/CareOnMedia';
+import { WhatsAppIcon } from '../common/WhatsAppIcon';
 
 interface PublicHeaderProps {
   currentPath: string;
@@ -370,9 +370,9 @@ export const PublicHeader: React.FC<PublicHeaderProps> = ({
               href={`https://wa.me/${cleanWhatsApp}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full py-2.5 px-3 bg-teal-50 hover:bg-teal-100 text-[#007E70] text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 border border-teal-200"
+              className="w-full py-2.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-[#007E70] text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 border border-emerald-200"
             >
-              <MessageCircle className="w-4 h-4 text-teal-600" />
+              <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
               <span>{lang === 'en' ? 'WhatsApp Clinic Support' : 'হোয়াটসঅ্যাপ সহায়তা'}</span>
             </a>
 

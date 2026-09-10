@@ -5,7 +5,6 @@ import {
   Mail,
   MapPin,
   Clock,
-  MessageCircle,
   Calendar,
   ShieldAlert,
   ChevronRight,
@@ -18,6 +17,7 @@ import {
   Lock
 } from 'lucide-react';
 import { WebsiteSettings } from '../../types';
+import { WhatsAppIcon } from '../common/WhatsAppIcon';
 
 interface PublicFooterProps {
   navigateTo: (path: string) => void;
@@ -121,9 +121,9 @@ export const PublicFooter: React.FC<PublicFooterProps> = ({
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="WhatsApp"
-                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-[#007E70] text-slate-300 hover:text-white flex items-center justify-center transition-colors border border-slate-700 shrink-0"
+                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-[#25D366] text-slate-300 hover:text-white flex items-center justify-center transition-colors border border-slate-700 shrink-0"
               >
-                <MessageCircle className="w-4 h-4" />
+                <WhatsAppIcon className="w-4 h-4" />
               </a>
             </div>
           </div>
@@ -189,7 +189,7 @@ export const PublicFooter: React.FC<PublicFooterProps> = ({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <MessageCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <WhatsAppIcon className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 <div>
                   <span className="text-slate-400 mr-1.5">{lang === 'en' ? 'WhatsApp:' : 'হোয়াটসঅ্যাপ:'}</span>
                   <a
@@ -236,7 +236,7 @@ export const PublicFooter: React.FC<PublicFooterProps> = ({
                   rel="noopener noreferrer"
                   className="w-full min-h-[44px] py-2 px-3 bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-200 text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-colors border border-emerald-700/60"
                 >
-                  <MessageCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <WhatsAppIcon className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                   <span>WhatsApp: {whatsappNumber}</span>
                 </a>
 

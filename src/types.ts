@@ -100,6 +100,7 @@ export interface MediaAsset {
   category: MediaCategory;
   url: string;
   storageKey: string;
+  storageBucket?: string;
   width?: number;
   height?: number;
   fileSize: number;

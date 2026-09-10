@@ -546,6 +546,12 @@ export const DataAccessLayer = {
     );
 
     notifyDataChange('AppointmentRequest');
+
+    // Asynchronously persist to Supabase PostgreSQL database
+    apiClient.createAppointment(newRequest).catch((err) => {
+      console.warn('[CareOn DAL] Background appointment sync note:', err.message);
+    });
+
     return newRequest;
   },
 
@@ -1340,6 +1346,20 @@ export const DataAccessLayer = {
     return loadFromStorage<AppointmentRequest[]>(STORAGE_KEYS.APPOINTMENTS, DEFAULT_APPOINTMENT_REQUESTS);
   },
 
+  async fetchAppointmentsFromApi(): Promise<AppointmentRequest[]> {
+    try {
+      const serverAppts = await apiClient.getAppointments();
+      if (Array.isArray(serverAppts)) {
+        saveToStorage(STORAGE_KEYS.APPOINTMENTS, serverAppts);
+        notifyDataChange('AppointmentRequest');
+        return serverAppts;
+      }
+    } catch (err: any) {
+      console.warn('[CareOn DAL] fetchAppointmentsFromApi notice:', err.message);
+    }
+    return loadFromStorage<AppointmentRequest[]>(STORAGE_KEYS.APPOINTMENTS, DEFAULT_APPOINTMENT_REQUESTS);
+  },
+
   createAppointmentRequest(request: AppointmentRequest): AppointmentRequest {
     const appointments = loadFromStorage<AppointmentRequest[]>(
       STORAGE_KEYS.APPOINTMENTS,
@@ -1410,6 +1430,24 @@ export const DataAccessLayer = {
       `New website booking request submitted for ${normalizedRequest.requestedDate || normalizedRequest.preferredDate} (${normalizedRequest.requestedTimeWindow || normalizedRequest.preferredTime})`
     );
     notifyDataChange('AppointmentRequest');
+
+    // Asynchronously persist to Supabase PostgreSQL database
+    apiClient.createAppointment(normalizedRequest).then((persisted) => {
+      if (persisted && persisted.id) {
+        const currentList = loadFromStorage<AppointmentRequest[]>(STORAGE_KEYS.APPOINTMENTS, []);
+        const idx = currentList.findIndex((a) => a.id === normalizedRequest.id || a.id === persisted.id);
+        if (idx !== -1) {
+          currentList[idx] = persisted;
+        } else {
+          currentList.unshift(persisted);
+        }
+        saveToStorage(STORAGE_KEYS.APPOINTMENTS, currentList);
+        notifyDataChange('AppointmentRequest');
+      }
+    }).catch((err) => {
+      console.warn('[CareOn DAL] Server appointment creation note:', err.message);
+    });
+
     return normalizedRequest;
   },
 
@@ -1440,6 +1478,15 @@ export const DataAccessLayer = {
     );
 
     notifyDataChange('AppointmentRequest');
+
+    // Asynchronously persist to Supabase PostgreSQL database
+    apiClient.updateAppointment(req.id, {
+      status: newStatus,
+      adminNotes
+    }).catch((err) => {
+      console.warn('[CareOn DAL] Server appointment status update note:', err.message);
+    });
+
     return req;
   },
 
@@ -1495,6 +1542,22 @@ export const DataAccessLayer = {
     );
 
     notifyDataChange('AppointmentRequest');
+
+    // Asynchronously persist to Supabase PostgreSQL database
+    apiClient.updateAppointment(req.id, {
+      status: 'CONFIRMED',
+      confirmedDate: confirmationData.confirmedDate,
+      confirmedTime: confirmationData.confirmedTime,
+      confirmedDoctorId: confirmationData.confirmedDoctorId,
+      confirmedDoctorName: confirmationData.confirmedDoctorName,
+      confirmedDepartment: confirmationData.confirmedDepartment,
+      confirmedServiceId: confirmationData.confirmedServiceId,
+      confirmedServiceName: confirmationData.confirmedServiceName,
+      adminNotes: confirmationData.adminNotes
+    }).catch((err) => {
+      console.warn('[CareOn DAL] Server appointment confirmation note:', err.message);
+    });
+
     return req;
   },
 
@@ -1526,6 +1589,15 @@ export const DataAccessLayer = {
     );
 
     notifyDataChange('AppointmentRequest');
+
+    // Asynchronously persist to Supabase PostgreSQL database
+    apiClient.updateAppointment(req.id, {
+      status: 'CONTACTED',
+      adminNotes
+    }).catch((err) => {
+      console.warn('[CareOn DAL] Server appointment contacted status note:', err.message);
+    });
+
     return req;
   },
 
@@ -1559,7 +1631,45 @@ export const DataAccessLayer = {
     );
 
     notifyDataChange('AppointmentRequest');
+
+    // Asynchronously persist to Supabase PostgreSQL database
+    apiClient.updateAppointment(req.id, {
+      status: 'CANCELLED',
+      cancellationReason,
+      adminNotes
+    }).catch((err) => {
+      console.warn('[CareOn DAL] Server appointment cancellation note:', err.message);
+    });
+
     return req;
+  },
+
+  deleteAppointmentRequest(
+    requestId: string,
+    adminUser?: AdminUser | null
+  ): boolean {
+    const requests = this.getAllAppointmentRequests();
+    const target = requests.find((r) => r.id === requestId);
+    const updated = requests.filter((r) => r.id !== requestId);
+    saveToStorage(STORAGE_KEYS.APPOINTMENTS, updated);
+
+    recordAudit(
+      adminUser || null,
+      'APPOINTMENT_DELETED',
+      'AppointmentRequest',
+      requestId,
+      target?.patientName || requestId,
+      `Permanently deleted appointment request ${requestId}`
+    );
+
+    notifyDataChange('AppointmentRequest');
+
+    // Asynchronously delete from Supabase PostgreSQL database
+    apiClient.deleteAppointment(requestId).catch((err) => {
+      console.warn('[CareOn DAL] Server appointment deletion note:', err.message);
+    });
+
+    return true;
   },
 
   recordWhatsAppInitiated(
@@ -1911,6 +2021,73 @@ export const DataAccessLayer = {
     }
 
     notifyDataChange('WebsiteSettings');
+
+    // Asynchronously push to Supabase PostgreSQL site_settings table
+    apiClient.updateSettings(updatedSettings).catch((err) => {
+      console.warn('[CareOn DAL] Background settings sync note:', err.message);
+    });
+
+    return updatedSettings;
+  },
+
+  async fetchWebsiteSettingsFromApi(): Promise<WebsiteSettings> {
+    try {
+      const serverSettings = await apiClient.getSettings();
+      if (serverSettings) {
+        saveToStorage(STORAGE_KEYS.SETTINGS, serverSettings);
+        notifyDataChange('WebsiteSettings');
+        return serverSettings;
+      }
+    } catch (err: any) {
+      console.warn('[CareOn DAL] fetchWebsiteSettingsFromApi note:', err.message);
+    }
+    return this.getWebsiteSettings();
+  },
+
+  async saveWebsiteSettingsAsync(settings: WebsiteSettings, adminUser?: AdminUser | null): Promise<WebsiteSettings> {
+    const updated = this.saveWebsiteSettings(settings, adminUser);
+    try {
+      const serverSettings = await apiClient.updateSettings(settings);
+      if (serverSettings) {
+        saveToStorage(STORAGE_KEYS.SETTINGS, serverSettings);
+        notifyDataChange('WebsiteSettings');
+        return serverSettings;
+      }
+    } catch (err: any) {
+      console.warn('[CareOn DAL] saveWebsiteSettingsAsync server error:', err.message);
+      throw err;
+    }
+    return updated;
+  },
+
+  async saveSectionMediaAsync(sectionMedia: SectionMediaSettings, adminUser?: AdminUser | null): Promise<WebsiteSettings> {
+    const current = this.getWebsiteSettings();
+    const updatedSettings: WebsiteSettings = {
+      ...current,
+      sectionMedia
+    };
+    saveToStorage(STORAGE_KEYS.SETTINGS, updatedSettings);
+    recordAudit(
+      adminUser || null,
+      'SECTION_MEDIA_SAVED',
+      'WebsiteSettings',
+      'section-media',
+      'Hero & Section Visuals',
+      'Updated section visual images for website'
+    );
+    notifyDataChange('WebsiteSettings');
+
+    try {
+      const serverSettings = await apiClient.updateSectionMedia(sectionMedia);
+      if (serverSettings) {
+        saveToStorage(STORAGE_KEYS.SETTINGS, serverSettings);
+        notifyDataChange('WebsiteSettings');
+        return serverSettings;
+      }
+    } catch (err: any) {
+      console.warn('[CareOn DAL] saveSectionMediaAsync server error:', err.message);
+      throw err;
+    }
     return updatedSettings;
   },
 

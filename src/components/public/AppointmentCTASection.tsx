@@ -2,13 +2,13 @@ import React from 'react';
 import {
   Calendar,
   Phone,
-  MessageCircle,
   Clock,
   ShieldCheck,
   ArrowRight,
   HeartHandshake
 } from 'lucide-react';
 import { WebsiteSettings } from '../../types';
+import { WhatsAppIcon } from '../common/WhatsAppIcon';
 
 interface AppointmentCTASectionProps {
   lang: 'en' | 'bn';
@@ -67,7 +67,7 @@ export const AppointmentCTASection: React.FC<AppointmentCTASectionProps> = ({
               rel="noopener noreferrer"
               className="w-full sm:w-auto px-6 py-4 bg-white/10 hover:bg-white/20 text-white text-sm font-bold rounded-2xl border border-white/20 transition-all flex items-center justify-center gap-2 backdrop-blur-xs"
             >
-              <MessageCircle className="w-4 h-4 text-teal-300" />
+              <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
               <span>{lang === 'en' ? 'WhatsApp Help Desk' : 'হোয়াটসঅ্যাপে যোগাযোগ'}</span>
             </a>
           )}
