@@ -935,11 +935,12 @@ export interface DeleteMediaAssetOptions {
   url?: string;
   category?: string;
   force?: boolean;
+  adminEmail?: string;
 }
 
 /**
  * Delete physical file from Supabase Storage.
- * Handles existing and legacy storage-path formats across candidate buckets.
+ * Uses batch removal in the primary 'careon-media' bucket without slow directory scanning loops.
  * Returns atomic result: if storage deletion encounters an error, reports failure.
  */
 export async function deleteFileFromSupabaseStorage(asset: {
@@ -965,12 +966,13 @@ export async function deleteFileFromSupabaseStorage(asset: {
     };
   }
 
-  // 1. Resolve candidate buckets
-  const buckets = [...FALLBACK_STORAGE_BUCKETS];
+  // 1. Resolve candidate buckets - primary is always 'careon-media'
+  const primaryBucket = 'careon-media';
+  const candidateBuckets = [primaryBucket];
   if (asset.url) {
     const match = asset.url.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)/);
-    if (match && match[1] && !buckets.includes(match[1])) {
-      buckets.unshift(match[1]);
+    if (match && match[1] && !candidateBuckets.includes(match[1])) {
+      candidateBuckets.push(match[1]);
     }
   }
 
@@ -984,21 +986,13 @@ export async function deleteFileFromSupabaseStorage(asset: {
     candidatePaths.add(noLeading);
 
     // If storageKey contains bucket prefix, strip it
-    for (const b of buckets) {
+    for (const b of candidateBuckets) {
       if (noLeading.startsWith(`${b}/`)) {
         candidatePaths.add(noLeading.slice(b.length + 1));
       }
     }
-
-    // Strip common directory prefixes
     if (noLeading.startsWith('assets/')) {
       candidatePaths.add(noLeading.slice('assets/'.length));
-    }
-    if (noLeading.startsWith('careon/assets/')) {
-      candidatePaths.add(noLeading.slice('careon/assets/'.length));
-    }
-    if (noLeading.startsWith('careon/')) {
-      candidatePaths.add(noLeading.slice('careon/'.length));
     }
   }
 
@@ -1007,15 +1001,12 @@ export async function deleteFileFromSupabaseStorage(asset: {
     candidatePaths.add(fn);
     candidatePaths.add(`assets/${fn}`);
 
-    // Category-specific and common paths
     const cat = asset.category ? asset.category.toLowerCase() : '';
     if (cat) {
       candidatePaths.add(`assets/${cat}s/${fn}`);
       candidatePaths.add(`assets/${cat}/${fn}`);
       candidatePaths.add(`${cat}s/${fn}`);
       candidatePaths.add(`${cat}/${fn}`);
-      candidatePaths.add(`careon/assets/${cat}/${fn}`);
-      candidatePaths.add(`careon/assets/${cat}s/${fn}`);
     }
 
     // Always check standard clinic directories
@@ -1037,7 +1028,6 @@ export async function deleteFileFromSupabaseStorage(asset: {
         candidatePaths.add(match[2]);
       }
     }
-    // Also check if the URL ends with a filename
     try {
       const urlObj = new URL(asset.url);
       const urlFileName = urlObj.pathname.split('/').pop();
@@ -1054,84 +1044,48 @@ export async function deleteFileFromSupabaseStorage(asset: {
     }
   }
 
-  // Active storage directory scan for matching filename
-  const targetFn = (asset.fileName || '').trim().toLowerCase();
-  if (targetFn) {
-    const searchDirs = [
-      'assets/doctors',
-      'assets/departments',
-      'assets/banners',
-      'assets/gallery',
-      'assets/logo',
-      'assets',
-      'doctors',
-      ''
-    ];
-    for (const b of buckets) {
-      for (const dir of searchDirs) {
-        try {
-          const { data: listData } = await client.storage.from(b).list(dir, { limit: 100 });
-          if (listData && Array.isArray(listData)) {
-            for (const item of listData) {
-              if (item.name) {
-                const itemLower = item.name.toLowerCase();
-                if (itemLower === targetFn || itemLower.endsWith(`_${targetFn}`)) {
-                  const resolvedPath = dir ? `${dir}/${item.name}` : item.name;
-                  candidatePaths.add(resolvedPath);
-                }
-              }
-            }
-          }
-        } catch {
-          // Continue
-        }
-      }
-    }
-  }
-
   const pathsList = Array.from(candidatePaths).filter(Boolean);
   const deletedObjects: { bucket: string; path: string }[] = [];
   const pathsAttempted: string[] = [];
 
   console.log(`[CareOn Storage] Initiating storage deletion for asset "${asset.fileName || asset.storageKey}"`);
-  console.log(`[CareOn Storage] Checking candidate paths:`, pathsList);
+  console.log(`[CareOn Storage] Checking candidate paths (${pathsList.length}):`, pathsList);
 
-  for (const bucket of buckets) {
-    for (const path of pathsList) {
-      const fullTarget = `${bucket}/${path}`;
-      pathsAttempted.push(fullTarget);
+  for (const bucket of candidateBuckets) {
+    pathsList.forEach((p) => pathsAttempted.push(`${bucket}/${p}`));
 
-      try {
-        const { data, error } = await client.storage.from(bucket).remove([path]);
-        if (error) {
-          console.error(`[CareOn Storage] Storage remove error for ${fullTarget}:`, error.message);
-          return {
-            success: false,
-            deletedCount: deletedObjects.length,
-            deletedObjects,
-            error: `Supabase Storage error (${fullTarget}): ${error.message}`,
-            pathsAttempted
-          };
-        }
-
-        if (data && data.length > 0) {
-          console.log(`[CareOn Storage] Successfully deleted physical file at ${fullTarget}:`, data);
-          deletedObjects.push({ bucket, path });
-        }
-      } catch (err: any) {
-        console.error(`[CareOn Storage] Storage exception for ${fullTarget}:`, err.message);
+    try {
+      const { data, error } = await client.storage.from(bucket).remove(pathsList);
+      if (error) {
+        console.error(`[CareOn Storage] Supabase Storage error for bucket ${bucket}:`, error.message);
         return {
           success: false,
           deletedCount: deletedObjects.length,
           deletedObjects,
-          error: `Storage exception on ${fullTarget}: ${err.message}`,
+          error: `Supabase Storage error (${bucket}): ${error.message}`,
           pathsAttempted
         };
       }
+
+      if (data && Array.isArray(data) && data.length > 0) {
+        console.log(`[CareOn Storage] Successfully deleted physical file(s) in ${bucket}:`, data);
+        data.forEach((item: any) => {
+          deletedObjects.push({ bucket, path: item.name || item.id || '' });
+        });
+      }
+    } catch (err: any) {
+      console.error(`[CareOn Storage] Storage exception for bucket ${bucket}:`, err.message);
+      return {
+        success: false,
+        deletedCount: deletedObjects.length,
+        deletedObjects,
+        error: `Storage exception on bucket ${bucket}: ${err.message}`,
+        pathsAttempted
+      };
     }
   }
 
-  console.log(`[CareOn Storage] Completed storage scan. Physical objects deleted: ${deletedObjects.length}`);
+  console.log(`[CareOn Storage] Completed storage deletion. Physical objects deleted: ${deletedObjects.length}`);
   return {
     success: true,
     deletedCount: deletedObjects.length,
@@ -1154,6 +1108,7 @@ export async function deleteSupabaseMediaAsset(
   deletedAsset?: MediaAsset;
   storageDeleted?: boolean;
   storageDetails?: any;
+  diagnostics?: any;
 }> {
   const client = getSupabaseClient();
   if (!client) {
@@ -1300,48 +1255,69 @@ export async function deleteSupabaseMediaAsset(
   }
 
   // 4. STEP B: Delete the media record from production database (site_settings)
-  const remainingAssets = rawDbAssets.filter((a) => {
-    if (targetId && a.id === targetId) return false;
-    if (matchedAsset && a.id === matchedAsset.id) return false;
+  let rawDbList = [...rawDbAssets];
+  if (rawDbList.length === 0) {
+    rawDbList = [...PROJECT_ASSETS_MANIFEST];
+  }
+
+  const remainingAssets = rawDbList.filter((a) => {
+    if (targetId && (a.id === targetId || a.fileName === targetId || a.storageKey === targetId)) return false;
+    if (matchedAsset && (a.id === matchedAsset.id || a.fileName === matchedAsset.fileName || a.storageKey === matchedAsset.storageKey)) return false;
     if (effectiveFileName && a.fileName.toLowerCase() === effectiveFileName.toLowerCase()) return false;
-    if (effectiveStorageKey && a.storageKey === effectiveStorageKey) return false;
+    if (effectiveStorageKey && (a.storageKey === effectiveStorageKey || a.storageKey?.endsWith(effectiveStorageKey))) return false;
     return true;
   });
 
-  if (rawDbAssets.length > 0 && remainingAssets.length !== rawDbAssets.length) {
-    const dbSaved = await saveSupabaseMediaAssets(remainingAssets);
-    if (!dbSaved) {
-      console.error(`[CareOn Media DB] Failed to save updated media_assets array in Supabase site_settings.`);
-      return {
-        success: false,
-        error: 'Failed to update database record in Supabase site_settings.'
-      };
-    }
+  const dbSaved = await saveSupabaseMediaAssets(remainingAssets);
+  if (!dbSaved) {
+    console.error(`[CareOn Media DB] Failed to save updated media_assets array in Supabase site_settings.`);
+    return {
+      success: false,
+      error: 'Failed to update database record in Supabase site_settings.'
+    };
   }
 
   // 5. STEP C: Add asset ID, filename, and storageKey to deleted_media_ids blacklist
-  const blacklistKeys = [
-    targetId,
-    targetFileName,
-    targetStorageKey,
-    effectiveFileName,
-    effectiveStorageKey,
-    matchedAsset?.id,
-    matchedAsset?.fileName,
-    matchedAsset?.storageKey
-  ].filter(Boolean) as string[];
+  const blacklistKeys = Array.from(
+    new Set(
+      [
+        targetId,
+        targetFileName,
+        targetStorageKey,
+        effectiveFileName,
+        effectiveStorageKey,
+        matchedAsset?.id,
+        matchedAsset?.fileName,
+        matchedAsset?.storageKey
+      ].filter(Boolean) as string[]
+    )
+  );
 
   await recordSupabaseDeletedAssetId(blacklistKeys);
 
-  console.log(
-    `[CareOn Media DB] Successfully deleted asset "${effectiveFileName}". Physical storage deleted: ${storageResult.deletedCount > 0}`
-  );
+  const diagnosticLog = {
+    authenticatedAdmin: options.adminEmail || 'admin@careonclinic.com',
+    assetId: targetId || matchedAsset?.id || 'unknown',
+    filename: effectiveFileName,
+    bucket: 'careon-media',
+    storageKey: effectiveStorageKey || 'unknown',
+    supabaseDeleteResult: storageResult,
+    databaseDeleteResult: {
+      success: true,
+      originalDbCount: rawDbList.length,
+      remainingCount: remainingAssets.length,
+      blacklistedKeys: blacklistKeys
+    }
+  };
+
+  console.log(`[CareOn Production Delete Audit]`, JSON.stringify(diagnosticLog, null, 2));
 
   return {
     success: true,
     deletedAsset: effectiveAsset,
     storageDeleted: storageResult.deletedCount > 0,
-    storageDetails: storageResult
+    storageDetails: storageResult,
+    diagnostics: diagnosticLog
   };
 }
 

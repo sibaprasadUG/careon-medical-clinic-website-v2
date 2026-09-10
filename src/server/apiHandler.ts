@@ -932,8 +932,8 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
     });
   }
 
-  // GET /api/assets (List all media assets from Supabase or fallback)
-  if (cleanPath === '/assets' && method === 'GET') {
+  // GET /api/assets or GET /api/media (List all media assets from Supabase or fallback)
+  if ((cleanPath === '/assets' || cleanPath === '/media') && method === 'GET') {
     if (isSupabaseConfigured()) {
       try {
         const assets = await getSupabaseMediaAssets();
@@ -955,8 +955,10 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
     });
   }
 
-  // DELETE /api/assets/:id or DELETE /api/assets (Permanent asset deletion from database & Supabase Storage)
-  if ((cleanPath === '/assets' || cleanPath.startsWith('/assets/')) && method === 'DELETE') {
+  // DELETE /api/assets/:id or DELETE /api/media/:id (Permanent asset deletion from database & Supabase Storage)
+  const isAssetsDelete = cleanPath === '/assets' || cleanPath.startsWith('/assets/');
+  const isMediaDelete = cleanPath === '/media' || cleanPath.startsWith('/media/');
+  if ((isAssetsDelete || isMediaDelete) && method === 'DELETE') {
     const auth = verifySessionToken(token);
     if (!auth.valid || !auth.user) {
       return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
@@ -965,6 +967,8 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
     let assetId = '';
     if (cleanPath.startsWith('/assets/') && cleanPath.length > '/assets/'.length) {
       assetId = decodeURIComponent(cleanPath.slice('/assets/'.length));
+    } else if (cleanPath.startsWith('/media/') && cleanPath.length > '/media/'.length) {
+      assetId = decodeURIComponent(cleanPath.slice('/media/'.length));
     }
 
     const query = req.query || {};
@@ -990,6 +994,7 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
     let deletedAsset: MediaAsset | undefined;
     let storageDeleted = false;
     let storageDetails: any = null;
+    let diagnostics: any = null;
 
     if (isSupabaseConfigured()) {
       try {
@@ -999,7 +1004,8 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
           storageKey,
           url,
           category,
-          force
+          force,
+          adminEmail: auth.user.email
         });
         if (!result.success) {
           console.error(`[CareOn API] Supabase media delete returned failure:`, result.error);
@@ -1011,6 +1017,7 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
         deletedAsset = result.deletedAsset;
         storageDeleted = Boolean(result.storageDeleted);
         storageDetails = result.storageDetails;
+        diagnostics = (result as any).diagnostics;
       } catch (err: any) {
         console.error('[CareOn API] Fatal error in Supabase asset deletion:', err.message);
         return jsonResponse(500, {
@@ -1046,6 +1053,7 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
       deletedAsset,
       storageDeleted,
       storageDetails,
+      diagnostics,
       source: isSupabaseConfigured() ? 'supabase_postgresql' : 'local_store'
     });
   }

@@ -85,7 +85,16 @@ export const MediaLibrary: React.FC = () => {
     setTimeout(() => setFeedbackBanner(null), 4000);
   };
 
-  const refreshList = () => {
+  const refreshList = async () => {
+    try {
+      const serverAssets = await DataAccessLayer.syncMediaAssetsWithServer();
+      if (Array.isArray(serverAssets)) {
+        setAssets(serverAssets);
+        return;
+      }
+    } catch {
+      // Fallback
+    }
     setAssets(DataAccessLayer.getAllMediaAssets());
   };
 
@@ -255,6 +264,7 @@ export const MediaLibrary: React.FC = () => {
       if (detailAsset?.id === asset.id) setDetailAsset(null);
       setDeleteConfirmCandidate(null);
       showBanner(`Asset "${asset.fileName}" permanently removed and storage reclaimed.`);
+      await refreshList();
     } catch (err: any) {
       setDeleteError(err.message || 'An error occurred during deletion.');
       showBanner(`Deletion failed: ${err.message}`);
@@ -281,6 +291,7 @@ export const MediaLibrary: React.FC = () => {
       if (detailAsset?.id === targetAsset.id) setDetailAsset(null);
       showBanner(`Asset "${targetAsset.fileName}" permanently deleted and storage reclaimed.`);
       setDeleteWarning(null);
+      await refreshList();
     } catch (err: any) {
       setDeleteError(err.message || 'An error occurred during deletion.');
       showBanner(`Deletion failed: ${err.message}`);

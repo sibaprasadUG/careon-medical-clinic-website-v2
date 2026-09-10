@@ -1582,24 +1582,16 @@ export const DataAccessLayer = {
   // --- MEDIA ASSETS ---
   getAllMediaAssets(): MediaAsset[] {
     const deletedIds = new Set(loadFromStorage<string[]>(STORAGE_KEYS.DELETED_MEDIA_IDS, []));
-    const stored = loadFromStorage<MediaAsset[]>(STORAGE_KEYS.MEDIA_ASSETS, DEFAULT_MEDIA_ASSETS);
+    const stored = loadFromStorage<MediaAsset[] | null>(STORAGE_KEYS.MEDIA_ASSETS, null);
     
-    // Merge with Project Assets Manifest avoiding duplicate IDs or URLs
+    // If assets have already been stored/synced from server, use them as authoritative source
+    const rawList: MediaAsset[] =
+      stored !== null
+        ? stored
+        : [...PROJECT_ASSETS_MANIFEST, ...DEFAULT_MEDIA_ASSETS];
+    
     const assetMap = new Map<string, MediaAsset>();
-    
-    // 1. Seed & project assets manifest (only if not marked permanently deleted)
-    PROJECT_ASSETS_MANIFEST.forEach((a) => {
-      const isDeleted =
-        deletedIds.has(a.id) ||
-        (a.fileName && deletedIds.has(a.fileName)) ||
-        (a.storageKey && deletedIds.has(a.storageKey));
-      if (!isDeleted) {
-        assetMap.set(a.id, a);
-        if (a.storageKey) assetMap.set(a.storageKey, a);
-      }
-    });
-    
-    DEFAULT_MEDIA_ASSETS.forEach((a) => {
+    rawList.forEach((a) => {
       const isDeleted =
         deletedIds.has(a.id) ||
         (a.fileName && deletedIds.has(a.fileName)) ||
@@ -1609,18 +1601,7 @@ export const DataAccessLayer = {
       }
     });
 
-    // 2. User-uploaded and edited assets
-    stored.forEach((a) => {
-      const isDeleted =
-        deletedIds.has(a.id) ||
-        (a.fileName && deletedIds.has(a.fileName)) ||
-        (a.storageKey && deletedIds.has(a.storageKey));
-      if (!isDeleted) {
-        assetMap.set(a.id, a);
-      }
-    });
-
-    return Array.from(new Set(assetMap.values()))
+    return Array.from(assetMap.values())
       .filter(
         (a) =>
           !deletedIds.has(a.id) &&
