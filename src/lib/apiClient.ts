@@ -1,4 +1,4 @@
-import { Doctor, Department, Service, WebsiteSettings, MediaAsset, AppointmentRequest } from '../types';
+import { Doctor, Department, Service, WebsiteSettings, MediaAsset, AppointmentRequest, SectionMediaSettings } from '../types';
 
 /**
  * Universal API Client for CareOn Medical Clinic

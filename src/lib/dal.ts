@@ -458,6 +458,14 @@ export const DataAccessLayer = {
     if (!s.openingHours || s.openingHours.includes('08:00 AM') || s.openingHours.includes('02:00 PM')) {
       s.openingHours = 'Mon – Sat: 09:00 AM – 07:00 PM | Sunday: Closed';
     }
+    if (!s.brand?.logoUrl && !s.logoUrl) {
+      s.brand = {
+        ...(s.brand || {}),
+        logoUrl: 'https://tgwthqwivtmarjsslxxn.supabase.co/storage/v1/object/public/careon-media/assets/doctor/asset-1789066744779-h4uevf-careon_logo_png.png',
+        logoAlt: s.brand?.logoAlt || 'CareOn Medical Clinic Logo'
+      };
+      s.logoUrl = 'https://tgwthqwivtmarjsslxxn.supabase.co/storage/v1/object/public/careon-media/assets/doctor/asset-1789066744779-h4uevf-careon_logo_png.png';
+    }
     if (s.announcement && (s.announcement.toLowerCase().includes('monsoon') || s.announcement.toLowerCase().includes('preventive monsoon'))) {
       s.announcement = '';
       s.announcementActive = false;

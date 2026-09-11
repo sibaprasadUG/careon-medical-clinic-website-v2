@@ -457,6 +457,13 @@ export const DEFAULT_WEBSITE_SETTINGS: WebsiteSettings = {
   clinicName: 'CareOn Medical Clinic',
   tagline: 'Caring Beyond Treatment',
   positioning: 'Trusted Healthcare for You & Your Family',
+  brand: {
+    logoUrl: 'https://tgwthqwivtmarjsslxxn.supabase.co/storage/v1/object/public/careon-media/assets/doctor/asset-1789066744779-h4uevf-careon_logo_png.png',
+    logoAlt: 'CareOn Medical Clinic Logo',
+    updatedAt: '2026-09-11T12:00:00.000Z'
+  },
+  logoUrl: 'https://tgwthqwivtmarjsslxxn.supabase.co/storage/v1/object/public/careon-media/assets/doctor/asset-1789066744779-h4uevf-careon_logo_png.png',
+  logoAlt: 'CareOn Medical Clinic Logo',
   phone: '9933335131',
   emergencyPhone: '9933520248',
   whatsapp: '9933335131',

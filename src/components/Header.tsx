@@ -72,8 +72,21 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
         {/* Brand Logo & Tagline */}
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('overview')}>
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#007E70] to-[#0D9488] flex items-center justify-center text-white shadow-sm shadow-teal-900/10">
-            <Stethoscope className="w-6 h-6 stroke-[2.2]" />
+          <div className="w-11 h-11 rounded-xl bg-white flex items-center justify-center p-1 shadow-sm border border-slate-200/80 overflow-hidden shrink-0">
+            <img
+              src="https://tgwthqwivtmarjsslxxn.supabase.co/storage/v1/object/public/careon-media/assets/doctor/asset-1789066744779-h4uevf-careon_logo_png.png"
+              alt="CareOn Medical Clinic"
+              className="w-full h-full object-contain"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                // Fallback to stylized icon if image fails
+                (e.currentTarget.style as any).display = 'none';
+                if (e.currentTarget.parentElement) {
+                  e.currentTarget.parentElement.className = "w-11 h-11 rounded-xl bg-gradient-to-br from-[#007E70] to-[#0D9488] flex items-center justify-center text-white shadow-sm shadow-teal-900/10";
+                  e.currentTarget.parentElement.innerHTML = '<svg class="w-6 h-6 stroke-[2.2]" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3"/><path d="M8 15v1a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6v-4"/><circle cx="20" cy="10" r="2"/></svg>';
+                }
+              }}
+            />
           </div>
           <div>
             <div className="flex items-center gap-1.5">

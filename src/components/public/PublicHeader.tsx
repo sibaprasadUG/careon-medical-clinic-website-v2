@@ -40,6 +40,12 @@ export const PublicHeader: React.FC<PublicHeaderProps> = ({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [isServicesOpen, setIsServicesOpen] = useState<boolean>(false);
   const [isPatientsOpen, setIsPatientsOpen] = useState<boolean>(false);
+  const [logoImgFailed, setLogoImgFailed] = useState<boolean>(false);
+
+  const brandLogoUrl =
+    settings?.brand?.logoUrl ||
+    settings?.logoUrl ||
+    'https://tgwthqwivtmarjsslxxn.supabase.co/storage/v1/object/public/careon-media/assets/doctor/asset-1789066744779-h4uevf-careon_logo_png.png';
 
   useEffect(() => {
     const handleScroll = () => {
@@ -167,8 +173,21 @@ export const PublicHeader: React.FC<PublicHeaderProps> = ({
             onClick={() => handleNavClick('/')}
             className="flex items-center gap-3 text-left group cursor-pointer focus:outline-none shrink-0"
           >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#0B192C] to-[#007E70] flex items-center justify-center text-white shadow-sm border border-slate-200/50">
-              <Heart className="w-5 h-5 text-white fill-white/20" />
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-white flex items-center justify-center p-1 shadow-sm border border-slate-200/80 overflow-hidden shrink-0 group-hover:border-teal-400/80 transition-colors">
+              {!logoImgFailed && brandLogoUrl ? (
+                <img
+                  src={brandLogoUrl}
+                  alt={settings?.brand?.logoAlt || settings?.logoAlt || 'CareOn Medical Clinic'}
+                  className="w-full h-full object-contain"
+                  onError={() => setLogoImgFailed(true)}
+                  loading="eager"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="w-full h-full rounded-lg bg-gradient-to-br from-[#0B192C] to-[#007E70] flex items-center justify-center text-white">
+                  <Heart className="w-5 h-5 text-white fill-white/20" />
+                </div>
+              )}
             </div>
             <div>
               <div className="text-base sm:text-lg font-extrabold text-[#0B192C] tracking-tight leading-tight">

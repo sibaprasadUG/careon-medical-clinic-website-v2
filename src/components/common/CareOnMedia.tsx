@@ -33,7 +33,8 @@ export const CareOnLogo: React.FC<CareOnLogoProps> = ({
   const customLogoUrl =
     activeSettings?.brand?.logoUrl ||
     activeSettings?.logoUrl ||
-    (activeSettings?.logoAssetId ? MediaStorageService.getPublicUrl(activeSettings.logoAssetId) : '');
+    (activeSettings?.logoAssetId ? MediaStorageService.getPublicUrl(activeSettings.logoAssetId) : '') ||
+    'https://tgwthqwivtmarjsslxxn.supabase.co/storage/v1/object/public/careon-media/assets/doctor/asset-1789066744779-h4uevf-careon_logo_png.png';
 
   const logoAlt =
     activeSettings?.brand?.logoAlt ||

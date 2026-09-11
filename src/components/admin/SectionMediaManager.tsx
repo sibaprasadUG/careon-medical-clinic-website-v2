@@ -31,8 +31,10 @@ const DEFAULT_SECTION_MEDIA: SectionMediaSettings = {
   emergencyImage: 'https://images.unsplash.com/photo-1587745416684-47953f16f02f?auto=format&fit=crop&q=80&w=1000'
 };
 
+type SectionMediaKey = 'heroImage' | 'homeCareImage' | 'aboutImage' | 'emergencyImage';
+
 interface SectionItemDef {
-  key: keyof SectionMediaSettings;
+  key: SectionMediaKey;
   id: 'hero' | 'homeCare' | 'about' | 'emergency';
   title: string;
   description: string;
@@ -180,8 +182,8 @@ export const SectionMediaManager: React.FC = () => {
 
   // Current active section metadata
   const currentSec = SECTIONS_LIST.find((s) => s.id === activeSection) || SECTIONS_LIST[0];
-  const stagedUrl = stagedMedia[currentSec.key] || '';
-  const savedUrl = currentSavedMedia[currentSec.key] || '';
+  const stagedUrl: string = (stagedMedia[currentSec.key] as string) || '';
+  const savedUrl: string = (currentSavedMedia[currentSec.key] as string) || '';
 
   // 1. STAGE: Handle direct URL input
   const handleUrlChange = (newUrl: string) => {
