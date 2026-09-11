@@ -34,8 +34,10 @@ import {
   RefreshCw,
   Edit3,
   Languages,
-  ShieldCheck
+  ShieldCheck,
+  Trash2
 } from 'lucide-react';
+import { ConfirmationDialog } from './ConfirmationDialog';
 
 export const AppointmentRequestManager: React.FC = () => {
   const { currentUser } = useAuth();
@@ -51,6 +53,7 @@ export const AppointmentRequestManager: React.FC = () => {
 
   // Detail Modal State
   const [activeRequest, setActiveRequest] = useState<AppointmentRequest | null>(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<AppointmentRequest | null>(null);
   const [confirmedDate, setConfirmedDate] = useState<string>('');
   const [confirmedTime, setConfirmedTime] = useState<string>('');
   const [confirmedDoctorId, setConfirmedDoctorId] = useState<string>('');
@@ -321,6 +324,19 @@ export const AppointmentRequestManager: React.FC = () => {
       setWhatsAppMessageType('CANCELLATION');
       setWhatsAppModalOpen(true);
     }
+  };
+
+  // Action: Permanently Delete Appointment
+  const handleConfirmDelete = () => {
+    if (!deleteCandidate || !currentUser) return;
+    DataAccessLayer.deleteAppointmentRequest(deleteCandidate.id, currentUser);
+    setDeleteCandidate(null);
+    if (activeRequest?.id === deleteCandidate.id) {
+      setActiveRequest(null);
+    }
+    loadData();
+    setActionSuccessMessage('Appointment permanently deleted from database.');
+    setTimeout(() => setActionSuccessMessage(null), 3000);
   };
 
   // Trigger Open WhatsApp Preview
@@ -1097,7 +1113,7 @@ export const AppointmentRequestManager: React.FC = () => {
 
             {/* SECTION 4: ACTIONS (Bottom Fixed Toolbar) */}
             <div className="p-4 sm:p-5 border-t border-slate-100 bg-slate-50/90 flex flex-wrap items-center justify-between gap-3 shrink-0">
-              {/* Left Actions: Call & Cancel */}
+              {/* Left Actions: Call, Status Cancel & Permanent Delete */}
               <div className="flex items-center gap-2">
                 <a
                   href={`tel:${patientPhoneInfo?.normalized || activeRequest.phone}`}
@@ -1111,14 +1127,24 @@ export const AppointmentRequestManager: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setCancelModalOpen(true)}
-                    className="py-2.5 px-3 text-slate-500 hover:text-rose-600 hover:bg-rose-50 text-xs font-bold rounded-xl transition-colors min-h-[44px] cursor-pointer"
+                    className="py-2.5 px-3 text-slate-500 hover:text-amber-600 hover:bg-amber-50 text-xs font-bold rounded-xl transition-colors min-h-[44px] cursor-pointer"
                   >
                     Cancel Appointment
                   </button>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => setDeleteCandidate(activeRequest)}
+                  className="py-2.5 px-3 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-xl text-xs font-bold transition-colors min-h-[44px] cursor-pointer flex items-center gap-1.5"
+                  title="Permanently remove appointment record from database"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete</span>
+                </button>
               </div>
 
-              {/* Right Actions: Workflow Transitions */}
+              {/* Right Actions: Workflow Transitions, Cancel & Save Changes */}
               <div className="flex flex-wrap items-center gap-2">
                 {activeRequest.status === 'NEW' && (
                   <button
@@ -1156,7 +1182,7 @@ export const AppointmentRequestManager: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleConfirmAppointment}
-                    className="py-2.5 px-5 bg-[#007E70] hover:bg-[#009282] text-white text-xs font-extrabold rounded-xl transition-all shadow-xs cursor-pointer min-h-[44px] flex items-center gap-1.5"
+                    className="py-2.5 px-5 bg-teal-50 hover:bg-teal-100 text-[#007E70] border border-teal-200 text-xs font-bold rounded-xl transition-all shadow-2xs cursor-pointer min-h-[44px] flex items-center gap-1.5"
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     <span>Confirm Appointment</span>
@@ -1165,16 +1191,39 @@ export const AppointmentRequestManager: React.FC = () => {
 
                 <button
                   type="button"
-                  onClick={handleSaveGeneralChanges}
-                  className="py-2.5 px-4 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl transition-colors min-h-[44px] cursor-pointer"
+                  onClick={() => setActiveRequest(null)}
+                  className="py-2.5 px-4 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl transition-colors min-h-[44px] cursor-pointer"
                 >
-                  Save Notes
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSaveGeneralChanges}
+                  className="py-2.5 px-5 bg-[#007E70] hover:bg-[#006e62] text-white text-xs font-extrabold rounded-xl transition-all shadow-md hover:shadow-lg flex items-center gap-1.5 min-h-[44px] cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Save Changes</span>
                 </button>
               </div>
             </div>
 
           </div>
         </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {deleteCandidate && (
+        <ConfirmationDialog
+          isOpen={Boolean(deleteCandidate)}
+          title={`Permanently Delete Appointment for ${deleteCandidate.patientName}?`}
+          message="This action will permanently delete this appointment record from the clinic database. Are you sure?"
+          confirmLabel="Delete Permanently"
+          cancelLabel="Cancel"
+          isDestructive={true}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setDeleteCandidate(null)}
+        />
       )}
 
       {/* ========================================================================= */}

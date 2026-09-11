@@ -138,9 +138,20 @@ export const SEOSettingsManager: React.FC = () => {
 
           <div className="space-y-3">
             <div className="space-y-1">
-              <label className="block text-xs font-bold text-[#0F172A]">
-                OG Image URL (1200x630 recommended)
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-[#0F172A]">
+                  OG Image URL (1200x630 recommended)
+                </label>
+                {seo.ogImage && (
+                  <button
+                    type="button"
+                    onClick={() => setSeo({ ...seo, ogImage: '' })}
+                    className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                  >
+                    Clear Image
+                  </button>
+                )}
+              </div>
               <input
                 type="url"
                 value={seo.ogImage}
@@ -161,13 +172,22 @@ export const SEOSettingsManager: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={() => {
+              setSeo(DataAccessLayer.getSEOSettings());
+            }}
+            className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+          >
+            Cancel
+          </button>
           <button
             type="submit"
-            className="px-6 py-3 bg-[#007E70] hover:bg-[#009282] text-white text-xs font-bold rounded-xl transition-all shadow-sm shadow-teal-900/10 flex items-center gap-2 cursor-pointer"
+            className="px-6 py-2.5 bg-[#007E70] hover:bg-[#009282] text-white text-xs font-bold rounded-xl transition-all shadow-sm shadow-teal-900/10 flex items-center gap-2 cursor-pointer"
           >
             <Save className="w-4 h-4" />
-            <span>Save SEO Configuration</span>
+            <span>Save Changes</span>
           </button>
         </div>
       </form>

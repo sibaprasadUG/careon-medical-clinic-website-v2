@@ -463,7 +463,18 @@ export const InsuranceManager: React.FC = () => {
 
               {/* Logo URL */}
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Logo Image URL (Optional)</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700">Logo Image URL (Optional)</label>
+                  {formData.logoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, logoUrl: '' })}
+                      className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                    >
+                      Clear Logo
+                    </button>
+                  )}
+                </div>
                 <input
                   type="text"
                   value={formData.logoUrl}
@@ -471,6 +482,16 @@ export const InsuranceManager: React.FC = () => {
                   placeholder="https://... or choose from Media Library"
                   className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-[#007E70]"
                 />
+                {formData.logoUrl && (
+                  <div className="mt-1 h-12 w-24 p-1 rounded-lg border border-slate-200 bg-white flex items-center justify-center overflow-hidden">
+                    <img
+                      src={formData.logoUrl}
+                      alt="Logo preview"
+                      className="max-h-full max-w-full object-contain"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Description (English + Bengali) */}
@@ -528,20 +549,37 @@ export const InsuranceManager: React.FC = () => {
               </div>
 
               {/* Submit Buttons */}
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-[#007E70] hover:bg-[#00665B] text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
-                >
-                  {editingPartner ? 'Update Partner' : 'Save Partner'}
-                </button>
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+                <div>
+                  {editingPartner && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeleteCandidate(editingPartner);
+                      }}
+                      className="px-4 py-2 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl border border-rose-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Partner</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-[#007E70] hover:bg-[#00665B] text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
+                  >
+                    {editingPartner ? 'Save Changes' : 'Create Partner'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

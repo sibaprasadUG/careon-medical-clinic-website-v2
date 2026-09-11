@@ -1,4 +1,4 @@
-import { ServerStore } from '../server/apiHandler';
+import { ServerStore } from '../types';
 
 export const INITIAL_PRODUCTION_STORE: ServerStore = {
   "doctors": [],
@@ -291,8 +291,8 @@ export const INITIAL_PRODUCTION_STORE: ServerStore = {
       "status": "ACTIVE",
       "createdAt": "2026-08-27T08:00:00.000Z",
       "updatedAt": "2026-08-27T08:00:00.000Z",
-      "createdBy": "admin@careonclinic.com",
-      "updatedBy": "admin@careonclinic.com",
+      "createdBy": "system",
+      "updatedBy": "system",
       "version": 1
     },
     {
@@ -310,8 +310,8 @@ export const INITIAL_PRODUCTION_STORE: ServerStore = {
       "status": "ACTIVE",
       "createdAt": "2026-08-27T08:00:00.000Z",
       "updatedAt": "2026-08-27T08:00:00.000Z",
-      "createdBy": "admin@careonclinic.com",
-      "updatedBy": "admin@careonclinic.com",
+      "createdBy": "system",
+      "updatedBy": "system",
       "version": 1
     },
     {
@@ -329,8 +329,8 @@ export const INITIAL_PRODUCTION_STORE: ServerStore = {
       "status": "ACTIVE",
       "createdAt": "2026-08-27T08:00:00.000Z",
       "updatedAt": "2026-08-27T08:00:00.000Z",
-      "createdBy": "admin@careonclinic.com",
-      "updatedBy": "admin@careonclinic.com",
+      "createdBy": "system",
+      "updatedBy": "system",
       "version": 1
     },
     {
@@ -348,8 +348,8 @@ export const INITIAL_PRODUCTION_STORE: ServerStore = {
       "status": "ACTIVE",
       "createdAt": "2026-08-27T08:00:00.000Z",
       "updatedAt": "2026-08-27T08:00:00.000Z",
-      "createdBy": "admin@careonclinic.com",
-      "updatedBy": "admin@careonclinic.com",
+      "createdBy": "system",
+      "updatedBy": "system",
       "version": 1
     },
     {
@@ -367,8 +367,8 @@ export const INITIAL_PRODUCTION_STORE: ServerStore = {
       "status": "ACTIVE",
       "createdAt": "2026-08-27T08:00:00.000Z",
       "updatedAt": "2026-08-27T08:00:00.000Z",
-      "createdBy": "admin@careonclinic.com",
-      "updatedBy": "admin@careonclinic.com",
+      "createdBy": "system",
+      "updatedBy": "system",
       "version": 1
     },
     {
@@ -386,8 +386,8 @@ export const INITIAL_PRODUCTION_STORE: ServerStore = {
       "status": "ACTIVE",
       "createdAt": "2026-08-27T08:00:00.000Z",
       "updatedAt": "2026-08-27T08:00:00.000Z",
-      "createdBy": "admin@careonclinic.com",
-      "updatedBy": "admin@careonclinic.com",
+      "createdBy": "system",
+      "updatedBy": "system",
       "version": 1
     },
     {
@@ -405,8 +405,8 @@ export const INITIAL_PRODUCTION_STORE: ServerStore = {
       "status": "ACTIVE",
       "createdAt": "2026-08-27T08:00:00.000Z",
       "updatedAt": "2026-08-27T08:00:00.000Z",
-      "createdBy": "admin@careonclinic.com",
-      "updatedBy": "admin@careonclinic.com",
+      "createdBy": "system",
+      "updatedBy": "system",
       "version": 1
     },
     {
@@ -424,8 +424,8 @@ export const INITIAL_PRODUCTION_STORE: ServerStore = {
       "status": "ACTIVE",
       "createdAt": "2026-08-27T08:00:00.000Z",
       "updatedAt": "2026-08-27T08:00:00.000Z",
-      "createdBy": "admin@careonclinic.com",
-      "updatedBy": "admin@careonclinic.com",
+      "createdBy": "system",
+      "updatedBy": "system",
       "version": 1
     },
     {
@@ -443,8 +443,8 @@ export const INITIAL_PRODUCTION_STORE: ServerStore = {
       "status": "ACTIVE",
       "createdAt": "2026-08-27T08:00:00.000Z",
       "updatedAt": "2026-08-27T08:00:00.000Z",
-      "createdBy": "admin@careonclinic.com",
-      "updatedBy": "admin@careonclinic.com",
+      "createdBy": "system",
+      "updatedBy": "system",
       "version": 1
     },
     {
@@ -462,8 +462,8 @@ export const INITIAL_PRODUCTION_STORE: ServerStore = {
       "status": "ACTIVE",
       "createdAt": "2026-08-27T08:00:00.000Z",
       "updatedAt": "2026-08-27T08:00:00.000Z",
-      "createdBy": "admin@careonclinic.com",
-      "updatedBy": "admin@careonclinic.com",
+      "createdBy": "system",
+      "updatedBy": "system",
       "version": 1
     },
     {
@@ -481,8 +481,8 @@ export const INITIAL_PRODUCTION_STORE: ServerStore = {
       "status": "ACTIVE",
       "createdAt": "2026-08-27T08:00:00.000Z",
       "updatedAt": "2026-08-27T08:00:00.000Z",
-      "createdBy": "admin@careonclinic.com",
-      "updatedBy": "admin@careonclinic.com",
+      "createdBy": "system",
+      "updatedBy": "system",
       "version": 1
     },
     {
@@ -500,8 +500,8 @@ export const INITIAL_PRODUCTION_STORE: ServerStore = {
       "status": "ACTIVE",
       "createdAt": "2026-08-27T08:00:00.000Z",
       "updatedAt": "2026-08-27T08:00:00.000Z",
-      "createdBy": "admin@careonclinic.com",
-      "updatedBy": "admin@careonclinic.com",
+      "createdBy": "system",
+      "updatedBy": "system",
       "version": 1
     }
   ],

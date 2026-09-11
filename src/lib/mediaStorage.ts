@@ -297,8 +297,8 @@ export const MediaStorageService = {
       status: 'ACTIVE',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      createdBy: adminUser?.email || 'admin@careonclinic.com',
-      updatedBy: adminUser?.email || 'admin@careonclinic.com',
+      createdBy: adminUser?.email || 'system',
+      updatedBy: adminUser?.email || 'system',
       version: 1
     };
 
@@ -351,7 +351,7 @@ export const MediaStorageService = {
       height,
       fileSize,
       updatedAt: new Date().toISOString(),
-      updatedBy: adminUser?.email || 'admin@careonclinic.com',
+      updatedBy: adminUser?.email || 'system',
       version: (existing.version || 1) + 1
     };
 

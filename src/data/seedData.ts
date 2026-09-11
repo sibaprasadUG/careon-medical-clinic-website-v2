@@ -15,7 +15,7 @@ import {
 export const DEFAULT_ADMIN_USERS: AdminUser[] = [
   {
     id: 'usr-admin-01',
-    email: 'admin@careonclinic.com',
+    email: 'administrator@clinic.internal',
     name: 'CareOn Administrator',
     role: 'ADMIN',
     avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'
@@ -512,7 +512,7 @@ export const DEFAULT_AUDIT_LOGS: AuditLog[] = [
     id: 'log-001',
     timestamp: '2026-08-27T08:00:00.000Z',
     adminUserId: 'usr-admin-01',
-    adminEmail: 'admin@careonclinic.com',
+    adminEmail: 'administrator@clinic.internal',
     action: 'SYSTEM_INITIALIZED',
     entityType: 'WebsiteSettings',
     entityId: 'settings-root',

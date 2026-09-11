@@ -12,6 +12,7 @@ import {
   Filter,
   ExternalLink
 } from 'lucide-react';
+import { ConfirmationDialog } from './ConfirmationDialog';
 
 export const GalleryManager: React.FC = () => {
   const { currentUser } = useAuth();
@@ -19,6 +20,7 @@ export const GalleryManager: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
   const [editingItem, setEditingItem] = useState<Partial<GalleryItem> | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<GalleryItem | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   const [formState, setFormState] = useState<{
@@ -117,6 +119,13 @@ export const GalleryManager: React.FC = () => {
     } catch (err: any) {
       setFormError(err.message || 'Failed to save gallery item.');
     }
+  };
+
+  const handleDeleteGalleryItem = () => {
+    if (!deleteConfirm || !currentUser) return;
+    DataAccessLayer.deleteGalleryItem(deleteConfirm.id, currentUser);
+    setDeleteConfirm(null);
+    setIsFormOpen(false);
   };
 
   const handleTogglePublish = (item: GalleryItem) => {
@@ -260,9 +269,20 @@ export const GalleryManager: React.FC = () => {
               </div>
 
               <div className="space-y-1">
-                <label className="block text-xs font-bold text-[#0F172A]">
-                  Image URL <span className="text-rose-500">*</span>
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-[#0F172A]">
+                    Image URL <span className="text-rose-500">*</span>
+                  </label>
+                  {formState.imageUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setFormState({ ...formState, imageUrl: '' })}
+                      className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                    >
+                      Clear Image
+                    </button>
+                  )}
+                </div>
                 <input
                   type="url"
                   required
@@ -271,6 +291,18 @@ export const GalleryManager: React.FC = () => {
                   placeholder="https://..."
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-[#007E70] focus:outline-none"
                 />
+                {formState.imageUrl && (
+                  <div className="relative w-full h-28 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 mt-2">
+                    <img
+                      src={formState.imageUrl}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -336,30 +368,43 @@ export const GalleryManager: React.FC = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={formState.published}
-                    onChange={(e) => setFormState({ ...formState, published: e.target.checked })}
-                    className="w-4 h-4 text-[#007E70] rounded border-slate-300 focus:ring-[#007E70]"
-                  />
-                  <span>Published on Website</span>
-                </label>
+              <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={formState.published}
+                      onChange={(e) => setFormState({ ...formState, published: e.target.checked })}
+                      className="w-4 h-4 text-[#007E70] rounded border-slate-300 focus:ring-[#007E70]"
+                    />
+                    <span>Published on Website</span>
+                  </label>
+
+                  {editingItem?.id && (
+                    <button
+                      type="button"
+                      onClick={() => setDeleteConfirm(editingItem as GalleryItem)}
+                      className="px-3 py-1.5 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl border border-rose-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete</span>
+                    </button>
+                  )}
+                </div>
 
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setIsFormOpen(false)}
-                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-[#007E70] text-white text-xs font-bold rounded-xl"
+                    className="px-5 py-2.5 bg-[#007E70] hover:bg-[#009282] text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
                   >
-                    Save Image
+                    {editingItem ? 'Save Changes' : 'Add Image'}
                   </button>
                 </div>
               </div>
@@ -367,6 +412,18 @@ export const GalleryManager: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* DELETE CONFIRMATION */}
+      <ConfirmationDialog
+        isOpen={Boolean(deleteConfirm)}
+        title="Permanently Delete Gallery Image?"
+        message={`Are you sure you want to permanently delete the gallery photo "${deleteConfirm?.title}"?`}
+        confirmLabel="Delete Image"
+        cancelLabel="Cancel"
+        isDestructive={true}
+        onConfirm={handleDeleteGalleryItem}
+        onCancel={() => setDeleteConfirm(null)}
+      />
     </div>
   );
 };

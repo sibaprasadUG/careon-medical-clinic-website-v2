@@ -537,3 +537,14 @@ export interface SchemaFieldDescriptor {
   required: boolean;
   description: string;
 }
+
+// Server Store State Interface
+export interface ServerStore {
+  doctors: Doctor[];
+  departments: Department[];
+  services: Service[];
+  settings: WebsiteSettings;
+  assets: MediaAsset[];
+  invalidatedTokens: string[];
+  lastUpdated: string;
+}

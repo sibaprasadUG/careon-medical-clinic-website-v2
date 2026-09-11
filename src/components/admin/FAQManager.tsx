@@ -10,8 +10,10 @@ import {
   X,
   Search,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Trash2
 } from 'lucide-react';
+import { ConfirmationDialog } from './ConfirmationDialog';
 
 export const FAQManager: React.FC = () => {
   const { currentUser } = useAuth();
@@ -20,6 +22,7 @@ export const FAQManager: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
   const [editingFaq, setEditingFaq] = useState<Partial<FAQ> | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<FAQ | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   const [formState, setFormState] = useState<{
@@ -122,6 +125,13 @@ export const FAQManager: React.FC = () => {
     } catch (err: any) {
       setFormError(err.message || 'Failed to save FAQ.');
     }
+  };
+
+  const handleDeleteFAQ = () => {
+    if (!deleteConfirm || !currentUser) return;
+    DataAccessLayer.deleteFAQ(deleteConfirm.id, currentUser);
+    setDeleteConfirm(null);
+    setIsFormOpen(false);
   };
 
   const handleTogglePublish = (faq: FAQ) => {
@@ -355,30 +365,43 @@ export const FAQManager: React.FC = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={formState.published}
-                    onChange={(e) => setFormState({ ...formState, published: e.target.checked })}
-                    className="w-4 h-4 text-[#007E70] rounded border-slate-300 focus:ring-[#007E70]"
-                  />
-                  <span>Published on Website</span>
-                </label>
+              <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={formState.published}
+                      onChange={(e) => setFormState({ ...formState, published: e.target.checked })}
+                      className="w-4 h-4 text-[#007E70] rounded border-slate-300 focus:ring-[#007E70]"
+                    />
+                    <span>Published on Website</span>
+                  </label>
+
+                  {editingFaq?.id && (
+                    <button
+                      type="button"
+                      onClick={() => setDeleteConfirm(editingFaq as FAQ)}
+                      className="px-3 py-1.5 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl border border-rose-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete</span>
+                    </button>
+                  )}
+                </div>
 
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setIsFormOpen(false)}
-                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-[#007E70] text-white text-xs font-bold rounded-xl"
+                    className="px-5 py-2.5 bg-[#007E70] hover:bg-[#009282] text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
                   >
-                    Save FAQ
+                    {editingFaq ? 'Save Changes' : 'Create FAQ'}
                   </button>
                 </div>
               </div>
@@ -386,6 +409,18 @@ export const FAQManager: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* DELETE CONFIRMATION */}
+      <ConfirmationDialog
+        isOpen={Boolean(deleteConfirm)}
+        title="Permanently Delete FAQ?"
+        message={`Are you sure you want to permanently delete the FAQ "${deleteConfirm?.question.substring(0, 40)}..."?`}
+        confirmLabel="Delete FAQ"
+        cancelLabel="Cancel"
+        isDestructive={true}
+        onConfirm={handleDeleteFAQ}
+        onCancel={() => setDeleteConfirm(null)}
+      />
     </div>
   );
 };

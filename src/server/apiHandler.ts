@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { Doctor, Department, Service, WebsiteSettings, MediaAsset, AdminUser, AppointmentRequest } from '../types';
+import { Doctor, Department, Service, WebsiteSettings, MediaAsset, AdminUser, AppointmentRequest, ServerStore } from '../types';
 import { DEFAULT_DEPARTMENTS, DEFAULT_SERVICES, DEFAULT_WEBSITE_SETTINGS } from '../data/seedData';
 import { PROJECT_ASSETS_MANIFEST } from '../data/assetsManifest';
 import { INITIAL_PRODUCTION_STORE } from '../data/productionStoreSnapshot';
@@ -35,9 +35,23 @@ const DATA_DIR = path.join(process.cwd(), '.data');
 const DATA_FILE = path.join(DATA_DIR, 'careon_store.json');
 const TMP_DATA_FILE = path.join(os.tmpdir(), 'careon_store.json');
 
-// Secret for HMAC session token signing (server-side only)
-const SESSION_SECRET =
-  process.env.SESSION_SECRET || 'careon_secure_clinic_session_secret_2026_production_key';
+/**
+ * Secret key for HMAC session token signing (server-side only).
+ * Strictly sourced from process.env.SESSION_SECRET.
+ * If unset in non-production/local container, generates an ephemeral 256-bit random key.
+ * This guarantees zero hardcoded secrets in repository or build output.
+ */
+let ephemeralSessionSecret: string | null = null;
+function getSessionSecret(): string {
+  const configured = process.env.SESSION_SECRET;
+  if (configured && configured.trim().length > 0) {
+    return configured.trim();
+  }
+  if (!ephemeralSessionSecret) {
+    ephemeralSessionSecret = crypto.randomBytes(32).toString('hex');
+  }
+  return ephemeralSessionSecret;
+}
 
 /**
  * Retrieves the admin credentials securely from server environment variables.
@@ -55,16 +69,6 @@ export function getAdminCredentials(): { email: string; password: string } {
   }
 
   return { email, password };
-}
-
-export interface ServerStore {
-  doctors: Doctor[];
-  departments: Department[];
-  services: Service[];
-  settings: WebsiteSettings;
-  assets: MediaAsset[];
-  invalidatedTokens: string[];
-  lastUpdated: string;
 }
 
 // In-memory cache for fast lookups
@@ -259,7 +263,7 @@ export function createSessionToken(user: AdminUser): string {
   ).toString('base64url');
 
   const signature = crypto
-    .createHmac('sha256', SESSION_SECRET)
+    .createHmac('sha256', getSessionSecret())
     .update(`${header}.${payload}`)
     .digest('base64url');
 
@@ -278,7 +282,7 @@ export function verifySessionToken(token: string): { valid: boolean; user?: Admi
 
   const [header, payload, signature] = parts;
   const expectedSig = crypto
-    .createHmac('sha256', SESSION_SECRET)
+    .createHmac('sha256', getSessionSecret())
     .update(`${header}.${payload}`)
     .digest('base64url');
 
@@ -301,7 +305,7 @@ export function verifySessionToken(token: string): { valid: boolean; user?: Admi
       valid: true,
       user: {
         id: data.sub || 'usr-admin-01',
-        email: data.email || (process.env.ADMIN_EMAIL ? process.env.ADMIN_EMAIL.trim().toLowerCase() : 'admin'),
+        email: data.email || (process.env.ADMIN_EMAIL ? process.env.ADMIN_EMAIL.trim().toLowerCase() : 'administrator'),
         name: data.name || 'CareOn Administrator',
         role: 'ADMIN'
       }

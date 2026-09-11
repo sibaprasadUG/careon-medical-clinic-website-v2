@@ -1298,7 +1298,7 @@ export async function deleteSupabaseMediaAsset(
   await recordSupabaseDeletedAssetId(blacklistKeys);
 
   const diagnosticLog = {
-    authenticatedAdmin: options.adminEmail || 'admin@careonclinic.com',
+    authenticatedAdmin: options.adminEmail || 'system',
     assetId: targetId || matchedAsset?.id || 'unknown',
     filename: effectiveFileName,
     bucket: 'careon-media',
@@ -1427,8 +1427,8 @@ export async function uploadFileToSupabaseStorageAndSaveMetadata(options: {
     status: 'ACTIVE',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    createdBy: options.adminEmail || 'admin@careonclinic.com',
-    updatedBy: options.adminEmail || 'admin@careonclinic.com',
+    createdBy: options.adminEmail || 'system',
+    updatedBy: options.adminEmail || 'system',
     version: 1
   };
 

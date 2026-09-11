@@ -153,8 +153,8 @@ export const DEFAULT_MEDIA_ASSETS: MediaAsset[] = [
     status: 'ACTIVE',
     createdAt: '2026-08-27T08:00:00.000Z',
     updatedAt: '2026-08-27T08:00:00.000Z',
-    createdBy: 'admin@careonclinic.com',
-    updatedBy: 'admin@careonclinic.com',
+    createdBy: 'system',
+    updatedBy: 'system',
     version: 1
   },
   {
@@ -172,8 +172,8 @@ export const DEFAULT_MEDIA_ASSETS: MediaAsset[] = [
     status: 'ACTIVE',
     createdAt: '2026-08-27T08:00:00.000Z',
     updatedAt: '2026-08-27T08:00:00.000Z',
-    createdBy: 'admin@careonclinic.com',
-    updatedBy: 'admin@careonclinic.com',
+    createdBy: 'system',
+    updatedBy: 'system',
     version: 1
   },
   {
@@ -191,8 +191,8 @@ export const DEFAULT_MEDIA_ASSETS: MediaAsset[] = [
     status: 'ACTIVE',
     createdAt: '2026-08-27T08:00:00.000Z',
     updatedAt: '2026-08-27T08:00:00.000Z',
-    createdBy: 'admin@careonclinic.com',
-    updatedBy: 'admin@careonclinic.com',
+    createdBy: 'system',
+    updatedBy: 'system',
     version: 1
   },
   {
@@ -210,8 +210,8 @@ export const DEFAULT_MEDIA_ASSETS: MediaAsset[] = [
     status: 'ACTIVE',
     createdAt: '2026-08-27T08:00:00.000Z',
     updatedAt: '2026-08-27T08:00:00.000Z',
-    createdBy: 'admin@careonclinic.com',
-    updatedBy: 'admin@careonclinic.com',
+    createdBy: 'system',
+    updatedBy: 'system',
     version: 1
   },
   {
@@ -229,8 +229,8 @@ export const DEFAULT_MEDIA_ASSETS: MediaAsset[] = [
     status: 'ACTIVE',
     createdAt: '2026-08-27T08:00:00.000Z',
     updatedAt: '2026-08-27T08:00:00.000Z',
-    createdBy: 'admin@careonclinic.com',
-    updatedBy: 'admin@careonclinic.com',
+    createdBy: 'system',
+    updatedBy: 'system',
     version: 1
   },
   {
@@ -248,8 +248,8 @@ export const DEFAULT_MEDIA_ASSETS: MediaAsset[] = [
     status: 'ACTIVE',
     createdAt: '2026-08-27T08:00:00.000Z',
     updatedAt: '2026-08-27T08:00:00.000Z',
-    createdBy: 'admin@careonclinic.com',
-    updatedBy: 'admin@careonclinic.com',
+    createdBy: 'system',
+    updatedBy: 'system',
     version: 1
   }
 ];
@@ -374,7 +374,7 @@ function recordAudit(
     id: `log-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     timestamp: new Date().toISOString(),
     adminUserId: adminUser?.id || 'system-action',
-    adminEmail: adminUser?.email || 'system@careonclinic.com',
+    adminEmail: adminUser?.email || 'system',
     action,
     entityType,
     entityId,
@@ -943,6 +943,18 @@ export const DataAccessLayer = {
     notifyDataChange('Department');
   },
 
+  deleteDepartment(departmentId: string, adminUser: AdminUser): boolean {
+    const departments = this.getAllDepartments();
+    const target = departments.find((d) => d.id === departmentId);
+    if (!target) return false;
+
+    const remaining = departments.filter((d) => d.id !== departmentId);
+    saveToStorage(STORAGE_KEYS.DEPARTMENTS, remaining);
+    recordAudit(adminUser, 'DEPARTMENT_DELETED', 'Department', target.id, target.name, 'Permanently deleted department');
+    notifyDataChange('Department');
+    return true;
+  },
+
   // --- SERVICES ---
   getAllServices(): Service[] {
     const rawServices = loadFromStorage<Service[]>(STORAGE_KEYS.SERVICES, DEFAULT_SERVICES);
@@ -1027,6 +1039,18 @@ export const DataAccessLayer = {
     saveToStorage(STORAGE_KEYS.SERVICES, services);
     recordAudit(adminUser, `SERVICE_STATUS_${newStatus}`, 'Service', srv.id, srv.name, `Status set to ${newStatus}`);
     notifyDataChange('Service');
+  },
+
+  deleteService(serviceId: string, adminUser: AdminUser): boolean {
+    const services = this.getAllServices();
+    const target = services.find((s) => s.id === serviceId);
+    if (!target) return false;
+
+    const remaining = services.filter((s) => s.id !== serviceId);
+    saveToStorage(STORAGE_KEYS.SERVICES, remaining);
+    recordAudit(adminUser, 'SERVICE_DELETED', 'Service', target.id, target.name, 'Permanently deleted service');
+    notifyDataChange('Service');
+    return true;
   },
 
   // --- PATIENT STORIES ---
@@ -1934,7 +1958,7 @@ export const DataAccessLayer = {
       brand: {
         ...brand,
         updatedAt: new Date().toISOString(),
-        updatedBy: adminUser?.email || 'admin@careonclinic.com'
+        updatedBy: adminUser?.email || 'system'
       },
       logoUrl: brand.logoUrl !== undefined ? brand.logoUrl : settings.logoUrl,
       logoAssetId: brand.logoAssetId !== undefined ? brand.logoAssetId : settings.logoAssetId,

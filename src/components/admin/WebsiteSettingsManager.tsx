@@ -1267,17 +1267,30 @@ export const WebsiteSettingsManager: React.FC = () => {
         )}
 
         {/* Global Save Button */}
-        <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-200">
           <p className="text-xs text-slate-400">
             Changes saved to the centralized data store propagate in real time across the live website.
           </p>
-          <button
-            type="submit"
-            className="px-6 py-3 bg-[#007E70] hover:bg-[#009282] text-white text-xs font-bold rounded-2xl transition-all shadow-sm shadow-teal-900/10 flex items-center gap-2 cursor-pointer"
-          >
-            <Save className="w-4 h-4" />
-            <span>Save All Website Settings</span>
-          </button>
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setSettings(DataAccessLayer.getWebsiteSettings());
+                setStagedLogo(null);
+                setStagedFavicon(null);
+              }}
+              className="px-5 py-3 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-2xl hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-6 py-3 bg-[#007E70] hover:bg-[#009282] text-white text-xs font-bold rounded-2xl transition-all shadow-sm shadow-teal-900/10 flex items-center gap-2 cursor-pointer"
+            >
+              <Save className="w-4 h-4" />
+              <span>Save Changes</span>
+            </button>
+          </div>
         </div>
       </form>
 
