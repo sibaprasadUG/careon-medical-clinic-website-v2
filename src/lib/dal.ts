@@ -317,7 +317,7 @@ export function generateSlug(text: string): string {
 
 // Runtime in-memory doctor cache to guarantee sync across all components
 let runtimeDoctorCache: Doctor[] | null = null;
-let isFetchingDoctors = false;
+let inFlightDoctorsPromise: Promise<Doctor[]> | null = null;
 
 // Helper to retrieve active admin JWT token for backend sync
 function getAdminAuthToken(): string | null {
@@ -392,7 +392,7 @@ export const DataAccessLayer = {
   // ==========================================
 
   getPublicDoctors(): Doctor[] {
-    if (!runtimeDoctorCache && !isFetchingDoctors && typeof window !== 'undefined') {
+    if (!runtimeDoctorCache && !inFlightDoctorsPromise && typeof window !== 'undefined') {
       DataAccessLayer.fetchDoctorsFromApi().catch(() => {});
     }
     const all = runtimeDoctorCache || loadFromStorage<Doctor[]>(STORAGE_KEYS.DOCTORS, []);
@@ -569,30 +569,34 @@ export const DataAccessLayer = {
 
   // --- DOCTORS ---
   getAllDoctors(): Doctor[] {
-    if (!runtimeDoctorCache && !isFetchingDoctors && typeof window !== 'undefined') {
+    if (!runtimeDoctorCache && !inFlightDoctorsPromise && typeof window !== 'undefined') {
       DataAccessLayer.fetchDoctorsFromApi().catch(() => {});
     }
     const all = runtimeDoctorCache || loadFromStorage<Doctor[]>(STORAGE_KEYS.DOCTORS, []);
     return all.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
   },
 
-  async fetchDoctorsFromApi(): Promise<Doctor[]> {
-    if (isFetchingDoctors) {
-      return runtimeDoctorCache || loadFromStorage<Doctor[]>(STORAGE_KEYS.DOCTORS, []);
+  async fetchDoctorsFromApi(force = false): Promise<Doctor[]> {
+    if (inFlightDoctorsPromise && !force) {
+      return inFlightDoctorsPromise;
     }
-    isFetchingDoctors = true;
-    try {
-      const serverDoctors = await apiClient.getDoctors();
-      runtimeDoctorCache = serverDoctors;
-      saveToStorage(STORAGE_KEYS.DOCTORS, serverDoctors);
-      notifyDataChange('Doctor');
-      return serverDoctors;
-    } catch (err) {
-      console.warn('Could not fetch doctors from API, using cached data:', err);
+    inFlightDoctorsPromise = (async () => {
+      try {
+        const serverDoctors = await apiClient.getDoctors();
+        if (Array.isArray(serverDoctors)) {
+          runtimeDoctorCache = serverDoctors;
+          saveToStorage(STORAGE_KEYS.DOCTORS, serverDoctors);
+          notifyDataChange('Doctor');
+          return serverDoctors;
+        }
+      } catch (err) {
+        console.warn('Could not fetch doctors from API, using cached data:', err);
+      } finally {
+        inFlightDoctorsPromise = null;
+      }
       return runtimeDoctorCache || loadFromStorage<Doctor[]>(STORAGE_KEYS.DOCTORS, []);
-    } finally {
-      isFetchingDoctors = false;
-    }
+    })();
+    return inFlightDoctorsPromise;
   },
 
   getDoctorById(id: string): Doctor | undefined {
@@ -882,6 +886,20 @@ export const DataAccessLayer = {
       .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
   },
 
+  async fetchDepartmentsFromApi(force = false): Promise<Department[]> {
+    try {
+      const serverDepts = await apiClient.getDepartments();
+      if (Array.isArray(serverDepts) && serverDepts.length > 0) {
+        saveToStorage(STORAGE_KEYS.DEPARTMENTS, serverDepts);
+        notifyDataChange('Department');
+        return serverDepts;
+      }
+    } catch (err) {
+      console.warn('Could not fetch departments from API, using cached data:', err);
+    }
+    return this.getAllDepartments();
+  },
+
   getDepartmentDependencies(departmentId: string): { activeDoctors: Doctor[]; activeServices: Service[] } {
     const doctors = this.getAllDoctors().filter((d) => d.departmentId === departmentId && d.status === 'ACTIVE');
     const services = this.getAllServices().filter((s) => s.departmentId === departmentId && s.status === 'ACTIVE');
@@ -966,6 +984,20 @@ export const DataAccessLayer = {
         availableAtClinic: s.availableAtClinic !== undefined ? s.availableAtClinic : (s.serviceType === 'CLINIC' || s.serviceType === 'BOTH' || !s.serviceType)
       }))
       .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+  },
+
+  async fetchServicesFromApi(force = false): Promise<Service[]> {
+    try {
+      const serverServices = await apiClient.getServices();
+      if (Array.isArray(serverServices) && serverServices.length > 0) {
+        saveToStorage(STORAGE_KEYS.SERVICES, serverServices);
+        notifyDataChange('Service');
+        return serverServices;
+      }
+    } catch (err) {
+      console.warn('Could not fetch services from API, using cached data:', err);
+    }
+    return this.getAllServices();
   },
 
   saveService(serviceData: Partial<Service> & { name: string; departmentId: string }, adminUser: AdminUser): Service {
@@ -1589,6 +1621,92 @@ export const DataAccessLayer = {
     }).catch((err) => {
       console.warn('[CareOn DAL] Server appointment confirmation note:', err.message);
     });
+
+    return req;
+  },
+
+  async confirmAppointmentAsync(
+    requestId: string,
+    confirmationData: {
+      confirmedDate: string;
+      confirmedTime: string;
+      confirmedDoctorId?: string;
+      confirmedDoctorName?: string;
+      confirmedDepartment?: string;
+      confirmedServiceId?: string;
+      confirmedServiceName?: string;
+      adminNotes?: string;
+    },
+    adminUser: AdminUser
+  ): Promise<AppointmentRequest | null> {
+    const localUpdated = this.confirmAppointment(requestId, confirmationData, adminUser);
+    if (!localUpdated) return null;
+
+    try {
+      const persisted = await apiClient.updateAppointment(requestId, {
+        status: 'CONFIRMED',
+        confirmedDate: confirmationData.confirmedDate,
+        confirmedTime: confirmationData.confirmedTime,
+        confirmedDoctorId: confirmationData.confirmedDoctorId,
+        confirmedDoctorName: confirmationData.confirmedDoctorName,
+        confirmedDepartment: confirmationData.confirmedDepartment,
+        confirmedServiceId: confirmationData.confirmedServiceId,
+        confirmedServiceName: confirmationData.confirmedServiceName,
+        adminNotes: confirmationData.adminNotes
+      });
+      if (persisted) {
+        const freshList = this.getAllAppointmentRequests();
+        const idx = freshList.findIndex((r) => r.id === requestId);
+        if (idx !== -1) {
+          freshList[idx] = persisted;
+          saveToStorage(STORAGE_KEYS.APPOINTMENTS, freshList);
+        }
+        return persisted;
+      }
+    } catch (err: any) {
+      console.warn('[CareOn DAL] confirmAppointmentAsync server note:', err.message);
+    }
+    return localUpdated;
+  },
+
+  async updateAppointmentDetails(
+    requestId: string,
+    updates: Partial<AppointmentRequest>,
+    adminUser: AdminUser
+  ): Promise<AppointmentRequest | null> {
+    const requests = this.getAllAppointmentRequests();
+    const req = requests.find((r) => r.id === requestId);
+    if (!req) return null;
+
+    Object.assign(req, updates);
+    req.updatedAt = new Date().toISOString();
+
+    saveToStorage(STORAGE_KEYS.APPOINTMENTS, requests);
+    recordAudit(
+      adminUser,
+      'APPOINTMENT_UPDATED',
+      'AppointmentRequest',
+      req.id,
+      req.patientName,
+      `Updated appointment details: ${updates.confirmedDoctorName ? `Doctor: ${updates.confirmedDoctorName}` : ''} ${updates.status || ''}`.trim()
+    );
+
+    notifyDataChange('AppointmentRequest');
+
+    try {
+      const persisted = await apiClient.updateAppointment(req.id, updates);
+      if (persisted) {
+        const freshList = this.getAllAppointmentRequests();
+        const idx = freshList.findIndex((r) => r.id === req.id);
+        if (idx !== -1) {
+          freshList[idx] = persisted;
+          saveToStorage(STORAGE_KEYS.APPOINTMENTS, freshList);
+        }
+        return persisted;
+      }
+    } catch (err: any) {
+      console.warn('[CareOn DAL] updateAppointmentDetails server sync note:', err.message);
+    }
 
     return req;
   },

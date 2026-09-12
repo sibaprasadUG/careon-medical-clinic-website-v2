@@ -74,6 +74,51 @@ export const AppointmentRequestManager: React.FC = () => {
   const [cancellationReason, setCancellationReason] = useState<string>('Patient requested cancellation');
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
+  // Dynamic Doctors & Services Loading & Error States
+  const [doctorsLoading, setDoctorsLoading] = useState<boolean>(false);
+  const [doctorsError, setDoctorsError] = useState<string | null>(null);
+  const [servicesLoading, setServicesLoading] = useState<boolean>(false);
+  const [servicesError, setServicesError] = useState<string | null>(null);
+  const [isSavingChanges, setIsSavingChanges] = useState<boolean>(false);
+
+  const refreshDoctors = async (force = false) => {
+    setDoctorsLoading(true);
+    setDoctorsError(null);
+    try {
+      const fetched = await DataAccessLayer.fetchDoctorsFromApi(force);
+      if (Array.isArray(fetched)) {
+        setDoctors(fetched);
+        return fetched;
+      }
+      return [];
+    } catch (err: any) {
+      console.error('[AppointmentRequestManager] Failed to load doctors:', err);
+      setDoctorsError(err?.message || 'Unable to load doctors');
+      return [];
+    } finally {
+      setDoctorsLoading(false);
+    }
+  };
+
+  const refreshServices = async (force = false) => {
+    setServicesLoading(true);
+    setServicesError(null);
+    try {
+      const fetched = await DataAccessLayer.fetchServicesFromApi(force);
+      if (Array.isArray(fetched)) {
+        setServices(fetched);
+        return fetched;
+      }
+      return [];
+    } catch (err: any) {
+      console.error('[AppointmentRequestManager] Failed to load services:', err);
+      setServicesError(err?.message || 'Unable to load services');
+      return [];
+    } finally {
+      setServicesLoading(false);
+    }
+  };
+
   const loadData = () => {
     setAppointments(DataAccessLayer.getAllAppointmentRequests());
     setDoctors(DataAccessLayer.getAllDoctors());
@@ -84,10 +129,14 @@ export const AppointmentRequestManager: React.FC = () => {
   const handleRefresh = async () => {
     setIsSyncing(true);
     try {
-      const serverAppts = await DataAccessLayer.fetchAppointmentsFromApi();
-      if (serverAppts) {
-        setAppointments(serverAppts);
-      }
+      const [serverAppts, freshDocs, freshServices] = await Promise.all([
+        DataAccessLayer.fetchAppointmentsFromApi(),
+        DataAccessLayer.fetchDoctorsFromApi(true),
+        DataAccessLayer.fetchServicesFromApi(true)
+      ]);
+      if (serverAppts) setAppointments(serverAppts);
+      if (freshDocs) setDoctors(freshDocs);
+      if (freshServices) setServices(freshServices);
     } catch (err: any) {
       console.warn('Failed to refresh appointments:', err.message);
     } finally {
@@ -98,13 +147,18 @@ export const AppointmentRequestManager: React.FC = () => {
   const getDoctorDepartmentName = (doc?: Doctor) => {
     if (!doc) return 'Clinical Consultation';
     const dep = departments.find((d) => d.id === doc.departmentId);
-    return dep?.name || doc.designation || 'Specialist Consultation';
+    return dep?.name || doc.departmentName || doc.designation || 'Specialist Consultation';
   };
 
   useEffect(() => {
     loadData();
     handleRefresh();
-    const handleUpdate = () => loadData();
+    refreshDoctors();
+    refreshServices();
+
+    const handleUpdate = () => {
+      loadData();
+    };
     window.addEventListener('careon_data_updated', handleUpdate);
     return () => window.removeEventListener('careon_data_updated', handleUpdate);
   }, []);
@@ -134,11 +188,35 @@ export const AppointmentRequestManager: React.FC = () => {
     return matchesSearch && matchesStatus && matchesType;
   });
 
+  // Active Doctors with graceful fallback for previously assigned doctors
+  const activeDoctors = doctors.filter(
+    (doc) => (doc.status === 'ACTIVE' || !doc.status) && doc.active !== false
+  );
+  const displayDoctors = [...activeDoctors];
+  if (confirmedDoctorId && !displayDoctors.some((d) => d.id === confirmedDoctorId)) {
+    const assignedDoc = doctors.find((d) => d.id === confirmedDoctorId);
+    if (assignedDoc) {
+      displayDoctors.unshift(assignedDoc);
+    }
+  }
+
+  // Active Services with graceful fallback for previously assigned services
+  const activeServices = services.filter(
+    (srv) => srv.status === 'ACTIVE' || !srv.status
+  );
+  const displayServices = [...activeServices];
+  if (confirmedServiceId && !displayServices.some((s) => s.id === confirmedServiceId)) {
+    const assignedSrv = services.find((s) => s.id === confirmedServiceId);
+    if (assignedSrv) {
+      displayServices.unshift(assignedSrv);
+    }
+  }
+
   // Open Detail Modal
   const handleOpenDetail = (req: AppointmentRequest) => {
     setActiveRequest(req);
     // Initialize confirmed date & time from confirmed fields or fallback to empty
-    setConfirmedDate(req.confirmedDate || (req.preferredDate.match(/^\d{4}-\d{2}-\d{2}$/) ? req.preferredDate : ''));
+    setConfirmedDate(req.confirmedDate || (req.preferredDate?.match(/^\d{4}-\d{2}-\d{2}$/) ? req.preferredDate : ''));
     setConfirmedTime(req.confirmedTime || '');
     setConfirmedDoctorId(req.confirmedDoctorId || req.doctorId || '');
     setConfirmedServiceId(req.confirmedServiceId || req.serviceId || '');
@@ -146,6 +224,10 @@ export const AppointmentRequestManager: React.FC = () => {
     setValidationError(null);
     setActionSuccessMessage(null);
     setCancelModalOpen(false);
+
+    // Refresh doctors and services from database API when modal opens
+    refreshDoctors();
+    refreshServices();
   };
 
   // Synchronize WhatsApp preview message text when options change
@@ -174,45 +256,67 @@ export const AppointmentRequestManager: React.FC = () => {
   }, [whatsAppModalOpen, whatsAppLang, whatsAppMessageType, activeRequest, confirmedDate, confirmedTime, confirmedDoctorId, confirmedServiceId, doctors, services]);
 
   // Save General Changes (Notes & Doctor/Service selection)
-  const handleSaveGeneralChanges = () => {
+  const handleSaveGeneralChanges = async () => {
     if (!activeRequest || !currentUser) return;
-    
+    setIsSavingChanges(true);
+    setValidationError(null);
+
     const selectedDoc = doctors.find((d) => d.id === confirmedDoctorId);
     const selectedSrv = services.find((s) => s.id === confirmedServiceId);
 
-    if (activeRequest.status === 'CONFIRMED') {
-      if (!confirmedDate || !confirmedTime) {
-        setValidationError('Confirmed Date and Confirmed Time are required for confirmed appointments.');
-        return;
+    try {
+      const updatePayload: Partial<AppointmentRequest> = {
+        confirmedDoctorId: confirmedDoctorId || undefined,
+        confirmedDoctorName: selectedDoc?.name || (confirmedDoctorId ? activeRequest.confirmedDoctorName : undefined),
+        confirmedDepartment: getDoctorDepartmentName(selectedDoc) || (confirmedDoctorId ? activeRequest.confirmedDepartment : undefined),
+        confirmedServiceId: confirmedServiceId || undefined,
+        confirmedServiceName: selectedSrv?.name || (confirmedServiceId ? activeRequest.confirmedServiceName : undefined),
+        adminNotes,
+        confirmedDate: confirmedDate || undefined,
+        confirmedTime: confirmedTime || undefined
+      };
+
+      if (confirmedDoctorId) {
+        updatePayload.doctorId = confirmedDoctorId;
+        if (selectedDoc?.name) updatePayload.doctorName = selectedDoc.name;
+        const deptName = getDoctorDepartmentName(selectedDoc);
+        if (deptName) updatePayload.department = deptName;
       }
 
-      const updated = DataAccessLayer.confirmAppointment(
-        activeRequest.id,
-        {
-          confirmedDate,
-          confirmedTime,
-          confirmedDoctorId,
-          confirmedDoctorName: selectedDoc?.name || activeRequest.confirmedDoctorName,
-          confirmedDepartment: getDoctorDepartmentName(selectedDoc) || activeRequest.confirmedDepartment,
-          confirmedServiceId,
-          confirmedServiceName: selectedSrv?.name || activeRequest.confirmedServiceName,
-          adminNotes
-        },
-        currentUser
-      );
-      if (updated) setActiveRequest(updated);
-    } else {
-      const updated = DataAccessLayer.updateAppointmentStatus(
-        activeRequest.id,
-        activeRequest.status,
-        adminNotes,
-        currentUser
-      );
-      if (updated) setActiveRequest(updated);
-    }
+      if (confirmedServiceId) {
+        updatePayload.serviceId = confirmedServiceId;
+        if (selectedSrv?.name) updatePayload.serviceName = selectedSrv.name;
+      }
 
-    setActionSuccessMessage('Changes saved successfully.');
-    setTimeout(() => setActionSuccessMessage(null), 3000);
+      if (activeRequest.status === 'CONFIRMED') {
+        if (!confirmedDate || !confirmedTime) {
+          setValidationError('Confirmed Date and Confirmed Time are required for confirmed appointments.');
+          setIsSavingChanges(false);
+          return;
+        }
+        updatePayload.status = 'CONFIRMED';
+      }
+
+      const updated = await DataAccessLayer.updateAppointmentDetails(
+        activeRequest.id,
+        updatePayload,
+        currentUser
+      );
+
+      if (updated) {
+        setActiveRequest(updated);
+        setAppointments((prev) =>
+          prev.map((a) => (a.id === updated.id ? { ...a, ...updated } : a))
+        );
+        setActionSuccessMessage('Changes saved successfully to database.');
+      }
+    } catch (err: any) {
+      console.error('Failed to save appointment changes:', err);
+      setValidationError(err?.message || 'Failed to save changes. Please try again.');
+    } finally {
+      setIsSavingChanges(false);
+      setTimeout(() => setActionSuccessMessage(null), 3500);
+    }
   };
 
   // Action: Mark Contacted
@@ -226,7 +330,7 @@ export const AppointmentRequestManager: React.FC = () => {
   };
 
   // Action: Confirm Appointment
-  const handleConfirmAppointment = () => {
+  const handleConfirmAppointment = async () => {
     if (!activeRequest || !currentUser) return;
 
     if (!confirmedDate || !confirmedDate.trim()) {
@@ -243,15 +347,15 @@ export const AppointmentRequestManager: React.FC = () => {
     const selectedDoc = doctors.find((d) => d.id === confirmedDoctorId);
     const selectedSrv = services.find((s) => s.id === confirmedServiceId);
 
-    const updated = DataAccessLayer.confirmAppointment(
+    const updated = await DataAccessLayer.confirmAppointmentAsync(
       activeRequest.id,
       {
         confirmedDate,
         confirmedTime,
-        confirmedDoctorId,
+        confirmedDoctorId: confirmedDoctorId || undefined,
         confirmedDoctorName: selectedDoc?.name || activeRequest.confirmedDoctorName || activeRequest.doctorName,
         confirmedDepartment: getDoctorDepartmentName(selectedDoc) || activeRequest.confirmedDepartment || activeRequest.department,
-        confirmedServiceId,
+        confirmedServiceId: confirmedServiceId || undefined,
         confirmedServiceName: selectedSrv?.name || activeRequest.confirmedServiceName || activeRequest.serviceName,
         adminNotes
       },
@@ -260,6 +364,9 @@ export const AppointmentRequestManager: React.FC = () => {
 
     if (updated) {
       setActiveRequest(updated);
+      setAppointments((prev) =>
+        prev.map((a) => (a.id === updated.id ? { ...a, ...updated } : a))
+      );
       setActionSuccessMessage('Appointment successfully CONFIRMED! Ready for WhatsApp notification.');
       // Open WhatsApp preview modal for the administrator
       setWhatsAppMessageType('CONFIRMATION');
@@ -268,7 +375,7 @@ export const AppointmentRequestManager: React.FC = () => {
   };
 
   // Action: Reschedule Appointment
-  const handleReschedule = () => {
+  const handleReschedule = async () => {
     if (!activeRequest || !currentUser) return;
 
     if (!confirmedDate || !confirmedDate.trim()) {
@@ -283,15 +390,15 @@ export const AppointmentRequestManager: React.FC = () => {
     const selectedDoc = doctors.find((d) => d.id === confirmedDoctorId);
     const selectedSrv = services.find((s) => s.id === confirmedServiceId);
 
-    const updated = DataAccessLayer.confirmAppointment(
+    const updated = await DataAccessLayer.confirmAppointmentAsync(
       activeRequest.id,
       {
         confirmedDate,
         confirmedTime,
-        confirmedDoctorId,
+        confirmedDoctorId: confirmedDoctorId || undefined,
         confirmedDoctorName: selectedDoc?.name || activeRequest.confirmedDoctorName,
         confirmedDepartment: getDoctorDepartmentName(selectedDoc) || activeRequest.confirmedDepartment,
-        confirmedServiceId,
+        confirmedServiceId: confirmedServiceId || undefined,
         confirmedServiceName: selectedSrv?.name || activeRequest.confirmedServiceName,
         adminNotes: adminNotes ? `${adminNotes} [Rescheduled]` : '[Rescheduled]'
       },
@@ -300,6 +407,9 @@ export const AppointmentRequestManager: React.FC = () => {
 
     if (updated) {
       setActiveRequest(updated);
+      setAppointments((prev) =>
+        prev.map((a) => (a.id === updated.id ? { ...a, ...updated } : a))
+      );
       setActionSuccessMessage('Appointment rescheduled. Preparing updated WhatsApp message.');
       setWhatsAppMessageType('RESCHEDULE');
       setWhatsAppModalOpen(true);
@@ -977,40 +1087,112 @@ export const AppointmentRequestManager: React.FC = () => {
 
                     {/* Confirmed Doctor */}
                     <div className="space-y-1.5">
-                      <label className="block text-xs font-bold text-slate-800">
-                        Confirmed Doctor
-                      </label>
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-bold text-slate-800">
+                          Confirmed Doctor
+                        </label>
+                        {doctorsLoading && (
+                          <span className="text-[10px] text-teal-700 font-medium flex items-center gap-1">
+                            <RefreshCw className="w-3 h-3 animate-spin text-teal-600" />
+                            Loading doctors...
+                          </span>
+                        )}
+                        {doctorsError && !doctorsLoading && (
+                          <span className="text-[10px] text-rose-600 font-medium">
+                            Unable to load doctors
+                          </span>
+                        )}
+                      </div>
                       <select
                         value={confirmedDoctorId}
                         onChange={(e) => setConfirmedDoctorId(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-[#007E70] focus:outline-none"
+                        disabled={doctorsLoading && displayDoctors.length === 0}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-[#007E70] focus:outline-none disabled:bg-slate-100 disabled:cursor-wait"
                       >
-                        <option value="">Select Doctor...</option>
-                        {doctors.map((doc) => (
-                          <option key={doc.id} value={doc.id}>
-                            {doc.name} ({getDoctorDepartmentName(doc)})
-                          </option>
-                        ))}
+                        {doctorsLoading && displayDoctors.length === 0 ? (
+                          <option value="">Loading doctors...</option>
+                        ) : doctorsError && displayDoctors.length === 0 ? (
+                          <option value="">Unable to load doctors</option>
+                        ) : displayDoctors.length === 0 ? (
+                          <option value="">No active doctors available</option>
+                        ) : (
+                          <>
+                            <option value="">Select Doctor...</option>
+                            {displayDoctors.map((doc) => (
+                              <option key={doc.id} value={doc.id}>
+                                {doc.name} ({getDoctorDepartmentName(doc)})
+                              </option>
+                            ))}
+                          </>
+                        )}
                       </select>
+                      {doctorsError && (
+                        <div className="flex items-center justify-between text-[11px] text-rose-600 pt-0.5">
+                          <span>Unable to load doctors.</span>
+                          <button
+                            type="button"
+                            onClick={() => refreshDoctors(true)}
+                            className="underline hover:text-rose-700 font-semibold cursor-pointer"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Confirmed Service */}
                     <div className="space-y-1.5">
-                      <label className="block text-xs font-bold text-slate-800">
-                        Confirmed Service
-                      </label>
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-bold text-slate-800">
+                          Confirmed Service
+                        </label>
+                        {servicesLoading && (
+                          <span className="text-[10px] text-teal-700 font-medium flex items-center gap-1">
+                            <RefreshCw className="w-3 h-3 animate-spin text-teal-600" />
+                            Loading services...
+                          </span>
+                        )}
+                        {servicesError && !servicesLoading && (
+                          <span className="text-[10px] text-rose-600 font-medium">
+                            Unable to load services
+                          </span>
+                        )}
+                      </div>
                       <select
                         value={confirmedServiceId}
                         onChange={(e) => setConfirmedServiceId(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-[#007E70] focus:outline-none"
+                        disabled={servicesLoading && displayServices.length === 0}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-[#007E70] focus:outline-none disabled:bg-slate-100 disabled:cursor-wait"
                       >
-                        <option value="">Select Service...</option>
-                        {services.map((srv) => (
-                          <option key={srv.id} value={srv.id}>
-                            {srv.name} ({srv.serviceType === 'HOME' ? 'Home Service' : 'Clinic'})
-                          </option>
-                        ))}
+                        {servicesLoading && displayServices.length === 0 ? (
+                          <option value="">Loading services...</option>
+                        ) : servicesError && displayServices.length === 0 ? (
+                          <option value="">Unable to load services</option>
+                        ) : displayServices.length === 0 ? (
+                          <option value="">No active services available</option>
+                        ) : (
+                          <>
+                            <option value="">Select Service...</option>
+                            {displayServices.map((srv) => (
+                              <option key={srv.id} value={srv.id}>
+                                {srv.name} ({srv.serviceType === 'HOME' ? 'Home Service' : 'Clinic'})
+                              </option>
+                            ))}
+                          </>
+                        )}
                       </select>
+                      {servicesError && (
+                        <div className="flex items-center justify-between text-[11px] text-rose-600 pt-0.5">
+                          <span>Unable to load services.</span>
+                          <button
+                            type="button"
+                            onClick={() => refreshServices(true)}
+                            className="underline hover:text-rose-700 font-semibold cursor-pointer"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1200,10 +1382,20 @@ export const AppointmentRequestManager: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleSaveGeneralChanges}
-                  className="py-2.5 px-5 bg-[#007E70] hover:bg-[#006e62] text-white text-xs font-extrabold rounded-xl transition-all shadow-md hover:shadow-lg flex items-center gap-1.5 min-h-[44px] cursor-pointer"
+                  disabled={isSavingChanges}
+                  className="py-2.5 px-5 bg-[#007E70] hover:bg-[#006e62] text-white text-xs font-extrabold rounded-xl transition-all shadow-md hover:shadow-lg flex items-center gap-1.5 min-h-[44px] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <Check className="w-4 h-4" />
-                  <span>Save Changes</span>
+                  {isSavingChanges ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Save Changes</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

@@ -26,7 +26,7 @@ export const LocationHoursReviewsSection: React.FC<LocationHoursReviewsSectionPr
     { day: lang === 'en' ? 'Thursday' : 'বৃহস্পতিবার', hours: '8:00 AM – 7:00 PM' },
     { day: lang === 'en' ? 'Friday' : 'শুক্রবার', hours: '8:00 AM – 7:00 PM' },
     { day: lang === 'en' ? 'Saturday' : 'শনিবার', hours: '8:00 AM – 7:00 PM' },
-    { day: lang === 'en' ? 'Sunday' : 'রবিবার', hours: lang === 'en' ? 'Closed' : 'বন্ধ' }
+    { day: lang === 'en' ? 'Sunday' : 'রবিবার', hours: '8:00 AM – 7:00 PM' }
   ];
 
   const mapAddress = 'Kumarpur (Amarttya Palli), Contai, Purba Medinipur, 721401';

@@ -76,7 +76,7 @@ export const PublicFooter: React.FC<PublicFooterProps> = ({
                   </span>
                 </div>
                 <div className="text-[10px] text-teal-300 font-medium">
-                  {lang === 'en' ? 'Caring Beyond Treatment' : 'চিকিৎসার বাইরেও আন্তরিক সেবা'}
+                  {lang === 'en' ? 'Caring Beyond Treatment' : 'মানবিক স্বাস্থ্য সেবায় সর্বদা আপনার পাশে'}
                 </div>
               </div>
             </div>

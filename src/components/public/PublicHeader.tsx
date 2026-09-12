@@ -102,8 +102,8 @@ export const PublicHeader: React.FC<PublicHeaderProps> = ({
             <span className="hidden sm:inline text-slate-500">•</span>
             <span className="hidden sm:inline text-[11px] text-slate-300">
               {lang === 'en'
-                ? 'Mon – Sat: 09:00 AM – 07:00 PM (Sunday Closed)'
-                : 'সোম – শনি: সকাল ৯টা – সন্ধ্যা ৭টা (রবিবার বন্ধ)'}
+                ? 'Everyday Open : 08:00 AM - 07:00 PM'
+                : 'প্রতিদিন খোলা : সকাল ০৮:০০ – সন্ধ্যা ০৭:০০'}
             </span>
           </div>
 
@@ -190,10 +190,10 @@ export const PublicHeader: React.FC<PublicHeaderProps> = ({
               )}
             </div>
             <div>
-              <div className="text-base sm:text-lg font-extrabold text-[#0B192C] tracking-tight leading-tight">
+              <div className="text-base sm:text-lg font-extrabold text-[#0B192C] tracking-tight leading-tight flex flex-wrap items-baseline">
                 Care<span className="text-[#007E70]">On</span>
-                <span className="text-xs font-semibold text-slate-500 ml-1.5 font-sans-ui">
-                  Medical Clinic
+                <span className="text-xs sm:text-xs font-semibold text-[#007E70] ml-1.5 font-bengali">
+                  মানবিক স্বাস্থ্য সেবায় সর্বদা আপনার পাশে
                 </span>
               </div>
               <div className="text-[10px] sm:text-[11px] font-semibold text-[#007E70] tracking-normal">

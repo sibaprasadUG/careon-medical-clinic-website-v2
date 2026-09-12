@@ -257,6 +257,32 @@ export const apiClient = {
     return res.doctors;
   },
 
+  /**
+   * Fetch all clinical services from the production database.
+   */
+  async getServices(): Promise<Service[]> {
+    const res = await sendApiRequest<{ success: boolean; services: Service[]; error?: string }>('/services', {
+      requiresAuth: false
+    });
+    if (!res.success || !Array.isArray(res.services)) {
+      throw new ApiError(res.error || 'Failed to fetch services', 500);
+    }
+    return res.services;
+  },
+
+  /**
+   * Fetch all clinical departments from the production database.
+   */
+  async getDepartments(): Promise<Department[]> {
+    const res = await sendApiRequest<{ success: boolean; departments: Department[]; error?: string }>('/departments', {
+      requiresAuth: false
+    });
+    if (!res.success || !Array.isArray(res.departments)) {
+      throw new ApiError(res.error || 'Failed to fetch departments', 500);
+    }
+    return res.departments;
+  },
+
   // --- Full Data Sync & Retrieval ---
 
   async getAllData(): Promise<{
