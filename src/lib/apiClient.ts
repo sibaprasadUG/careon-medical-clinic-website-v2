@@ -5,17 +5,11 @@ import { Doctor, Department, Service, WebsiteSettings, MediaAsset, AppointmentRe
  * Handles communication with the unified production API across:
  * - Local Vite Dev / AI Studio Preview
  * - Netlify Production Deployment
- * - Configurable Remote Production Endpoint (VITE_API_BASE_URL)
+ * - Configurable Remote Production Endpoint (custom API URL)
  */
 
 export function getApiBaseUrl(): string {
-  // 1. Environment variable VITE_API_BASE_URL
-  const envUrl = (import.meta as any)?.env?.VITE_API_BASE_URL;
-  if (envUrl && typeof envUrl === 'string' && envUrl.trim()) {
-    return envUrl.trim().replace(/\/$/, '');
-  }
-
-  // 2. Runtime override in window or localStorage
+  // 1. Runtime override in window or localStorage
   if (typeof window !== 'undefined') {
     const customUrl = localStorage.getItem('careon_custom_api_url');
     if (customUrl && customUrl.trim()) {
@@ -23,7 +17,7 @@ export function getApiBaseUrl(): string {
     }
   }
 
-  // 3. Default relative API path (works in both Preview and Netlify)
+  // 2. Default relative API path (works in both Dev Preview and Netlify Production)
   return '/api';
 }
 
