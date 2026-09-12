@@ -64,7 +64,7 @@ export function getAdminCredentials(): { email: string; password: string } {
 
   if (!email || !password) {
     throw new Error(
-      'ADMIN_AUTH_NOT_CONFIGURED: Both ADMIN_EMAIL and ADMIN_PASSWORD environment variables must be configured on the server.'
+      'ADMIN_AUTH_NOT_CONFIGURED: Administrative credentials must be configured in the server environment.'
     );
   }
 
@@ -421,7 +421,7 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
         provider: 'local_file_fallback',
         project: 'careon-medical-clinic',
         connected: false,
-        hint: 'Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to connect live Supabase PostgreSQL database.',
+        hint: 'Connect live Supabase PostgreSQL database using server environment settings.',
         doctorsCount: store.doctors.length,
         lastUpdated: store.lastUpdated
       }
@@ -434,10 +434,10 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
     try {
       adminCreds = getAdminCredentials();
     } catch {
-      console.error('[CareOn Auth] Server configuration error: ADMIN_EMAIL or ADMIN_PASSWORD environment variable is missing.');
+      console.error('[CareOn Auth] Server configuration error: Admin credentials are not configured on the server.');
       return jsonResponse(500, {
         success: false,
-        error: 'Admin authentication is not configured on the server. Please ensure ADMIN_EMAIL and ADMIN_PASSWORD environment variables are set.'
+        error: 'Admin authentication is not configured on the server. Please check server administrator environment settings.'
       });
     }
 

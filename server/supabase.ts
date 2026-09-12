@@ -682,7 +682,7 @@ export async function checkSupabaseHealth(): Promise<{
       doctorsCount: 0,
       departmentsCount: 0,
       servicesCount: 0,
-      error: 'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not configured.'
+      error: 'Supabase database credentials are not configured in server environment.'
     };
   }
 
