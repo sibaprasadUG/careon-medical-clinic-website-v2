@@ -2,10 +2,10 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { Doctor, Department, Service, WebsiteSettings, MediaAsset, AdminUser, AppointmentRequest, ServerStore } from '../types';
-import { DEFAULT_DEPARTMENTS, DEFAULT_SERVICES, DEFAULT_WEBSITE_SETTINGS } from '../data/seedData';
-import { PROJECT_ASSETS_MANIFEST } from '../data/assetsManifest';
-import { INITIAL_PRODUCTION_STORE } from '../data/productionStoreSnapshot';
+import { Doctor, Department, Service, WebsiteSettings, MediaAsset, AdminUser, AppointmentRequest, ServerStore } from '../src/types';
+import { DEFAULT_DEPARTMENTS, DEFAULT_SERVICES, DEFAULT_WEBSITE_SETTINGS } from '../src/data/seedData';
+import { PROJECT_ASSETS_MANIFEST } from '../src/data/assetsManifest';
+import { INITIAL_PRODUCTION_STORE } from '../src/data/productionStoreSnapshot';
 import {
   isSupabaseConfigured,
   getSupabaseDoctors,
@@ -305,7 +305,7 @@ export function verifySessionToken(token: string): { valid: boolean; user?: Admi
       valid: true,
       user: {
         id: data.sub || 'usr-admin-01',
-        email: data.email || (process.env.ADMIN_EMAIL ? process.env.ADMIN_EMAIL.trim().toLowerCase() : 'administrator'),
+        email: data.email || 'administrator',
         name: data.name || 'CareOn Administrator',
         role: 'ADMIN'
       }
@@ -357,17 +357,28 @@ export interface ApiResponse {
 export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
   const cleanPath = req.path.replace(/^\/api/, '').replace(/\/$/, '') || '/';
   const method = (req.method || 'GET').toUpperCase();
-  const authHeader = req.headers?.['authorization'] || req.headers?.['Authorization'] || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7).trim() : authHeader.trim();
 
-  const jsonResponse = (statusCode: number, data: any): ApiResponse => ({
+  // Extract session token from Authorization header or HttpOnly Cookie
+  const authHeader = req.headers?.['authorization'] || req.headers?.['Authorization'] || '';
+  let token = authHeader.startsWith('Bearer ') ? authHeader.substring(7).trim() : authHeader.trim();
+
+  if (!token && req.headers) {
+    const rawCookie = req.headers['cookie'] || req.headers['Cookie'] || '';
+    const cookieMatch = rawCookie.match(/(?:^|;\s*)careon_admin_session=([^;]+)/);
+    if (cookieMatch) {
+      token = decodeURIComponent(cookieMatch[1].trim());
+    }
+  }
+
+  const jsonResponse = (statusCode: number, data: any, customHeaders: Record<string, string> = {}): ApiResponse => ({
     statusCode,
     headers: {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      ...customHeaders
     },
     body: JSON.stringify(data)
   });
@@ -451,11 +462,15 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
     };
 
     const sessionToken = createSessionToken(adminUser);
+    const isProd = process.env.NODE_ENV === 'production';
+    const cookieHeaderVal = `careon_admin_session=${encodeURIComponent(sessionToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400${isProd ? '; Secure' : ''}`;
 
     return jsonResponse(200, {
       success: true,
       token: sessionToken,
       user: adminUser
+    }, {
+      'Set-Cookie': cookieHeaderVal
     });
   }
 
@@ -471,7 +486,11 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
     if (token) {
       await invalidateSessionToken(token);
     }
-    return jsonResponse(200, { success: true, message: 'Logged out successfully.' });
+    const isProd = process.env.NODE_ENV === 'production';
+    const clearCookieVal = `careon_admin_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${isProd ? '; Secure' : ''}`;
+    return jsonResponse(200, { success: true, message: 'Logged out successfully.' }, {
+      'Set-Cookie': clearCookieVal
+    });
   }
 
   // --- DOCTOR CRUD ENDPOINTS ---

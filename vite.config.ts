@@ -2,7 +2,6 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig, Plugin } from 'vite';
-import { handleApiRequest } from './src/server/apiHandler';
 
 function careonApiPlugin(): Plugin {
   return {
@@ -14,6 +13,7 @@ function careonApiPlugin(): Plugin {
         }
 
         try {
+          const { handleApiRequest } = await import('./server/apiHandler');
           let body: any = undefined;
           if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH' || req.method === 'DELETE') {
             const buffers: Buffer[] = [];
@@ -59,6 +59,7 @@ function careonApiPlugin(): Plugin {
         }
 
         try {
+          const { handleApiRequest } = await import('./server/apiHandler');
           let body: any = undefined;
           if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH' || req.method === 'DELETE') {
             const buffers: Buffer[] = [];

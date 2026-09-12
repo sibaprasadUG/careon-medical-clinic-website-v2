@@ -1,4 +1,4 @@
-import { handleApiRequest, ApiRequest } from '../../src/server/apiHandler';
+import { handleApiRequest, ApiRequest } from '../../server/apiHandler';
 
 export const handler = async (event: any, context: any) => {
   let bodyData: any = undefined;

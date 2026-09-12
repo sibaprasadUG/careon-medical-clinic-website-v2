@@ -13,9 +13,9 @@ import {
   MediaCategory,
   AppointmentRequest,
   AppointmentStatus
-} from '../types';
-import { DEFAULT_DEPARTMENTS, DEFAULT_SERVICES, DEFAULT_WEBSITE_SETTINGS } from '../data/seedData';
-import { PROJECT_ASSETS_MANIFEST } from '../data/assetsManifest';
+} from '../src/types';
+import { DEFAULT_DEPARTMENTS, DEFAULT_SERVICES, DEFAULT_WEBSITE_SETTINGS } from '../src/data/seedData';
+import { PROJECT_ASSETS_MANIFEST } from '../src/data/assetsManifest';
 
 /**
  * CareOn Medical Clinic - Server-side Supabase PostgreSQL Integration

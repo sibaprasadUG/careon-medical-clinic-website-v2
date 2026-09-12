@@ -88,6 +88,7 @@ async function sendApiRequest<T = any>(
   const fetchOptions: RequestInit = {
     method: options.method || 'GET',
     headers,
+    credentials: 'include',
     cache: 'no-store'
   };
 
