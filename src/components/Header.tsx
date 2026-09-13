@@ -74,7 +74,7 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('overview')}>
           <div className="w-11 h-11 rounded-xl bg-white flex items-center justify-center p-1 shadow-sm border border-slate-200/80 overflow-hidden shrink-0">
             <img
-              src="https://tgwthqwivtmarjsslxxn.supabase.co/storage/v1/object/public/careon-media/assets/doctor/asset-1789066744779-h4uevf-careon_logo_png.png"
+              src="/careon_logo.png"
               alt="CareOn Medical Clinic"
               className="w-full h-full object-contain"
               referrerPolicy="no-referrer"
