@@ -36,6 +36,9 @@ export default function App() {
 
   const {
     doctors,
+    doctorsLoading,
+    doctorsError,
+    fetchAuthoritativeDoctors,
     services,
     departments,
     patientStories,
@@ -146,6 +149,9 @@ export default function App() {
               doctors={doctors}
               departments={departments}
               lang={lang}
+              loading={doctorsLoading}
+              error={doctorsError}
+              onRetry={fetchAuthoritativeDoctors}
               onBookDoctor={(doc) => handleOpenBooking({ type: 'DOCTOR', id: doc.id })}
             />
           )}

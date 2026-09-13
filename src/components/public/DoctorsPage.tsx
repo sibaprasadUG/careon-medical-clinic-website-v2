@@ -20,23 +20,48 @@ interface DoctorsPageProps {
   departments: Department[];
   lang: 'en' | 'bn';
   onBookDoctor: (doctor: Doctor) => void;
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
 }
 
 export const DoctorsPage: React.FC<DoctorsPageProps> = ({
   doctors,
   departments,
   lang,
-  onBookDoctor
+  onBookDoctor,
+  loading = false,
+  error = null,
+  onRetry
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedDeptId, setSelectedDeptId] = useState<string>('all');
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
 
+  const getDoctorDepartment = (doctor: Doctor): Department | undefined => {
+    if (doctor.departmentId) {
+      const found = departments.find((d) => d.id === doctor.departmentId);
+      if (found) return found;
+    }
+    if (doctor.departmentName) {
+      const nameLower = doctor.departmentName.toLowerCase().trim();
+      return departments.find(
+        (d) =>
+          d.name.toLowerCase().includes(nameLower) ||
+          (d.slug && (d.slug.toLowerCase().includes(nameLower) || nameLower.includes(d.slug.toLowerCase())))
+      );
+    }
+    return undefined;
+  };
+
   const activeDoctors = doctors.filter((d) => d.status === 'ACTIVE');
 
   const filteredDoctors = activeDoctors.filter((doctor) => {
+    const docDept = getDoctorDepartment(doctor);
     const matchesDept =
-      selectedDeptId === 'all' || doctor.departmentId === selectedDeptId;
+      selectedDeptId === 'all' ||
+      doctor.departmentId === selectedDeptId ||
+      docDept?.id === selectedDeptId;
 
     const query = searchQuery.toLowerCase().trim();
     if (!query) return matchesDept;
@@ -51,10 +76,6 @@ export const DoctorsPage: React.FC<DoctorsPageProps> = ({
 
     return matchesDept && matchesSearch;
   });
-
-  const getDepartment = (deptId: string) => {
-    return departments.find((d) => d.id === deptId);
-  };
 
   return (
     <div className="py-12 sm:py-16 bg-slate-50/50">
@@ -110,7 +131,9 @@ export const DoctorsPage: React.FC<DoctorsPageProps> = ({
             {departments
               .filter((d) => d.status === 'ACTIVE')
               .map((dept) => {
-                const count = activeDoctors.filter((doc) => doc.departmentId === dept.id).length;
+                const count = activeDoctors.filter(
+                  (doc) => doc.departmentId === dept.id || getDoctorDepartment(doc)?.id === dept.id
+                ).length;
                 if (count === 0) return null;
                 return (
                   <button
@@ -130,7 +153,49 @@ export const DoctorsPage: React.FC<DoctorsPageProps> = ({
         </div>
 
         {/* Doctors Grid */}
-        {doctors.length === 0 ? (
+        {loading && doctors.length === 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
+            {[1, 2, 3].map((n) => (
+              <div
+                key={n}
+                className="bg-white rounded-3xl p-6 border border-slate-200 space-y-5 animate-pulse"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="w-20 h-24 rounded-2xl bg-slate-200 shrink-0" />
+                  <div className="space-y-2 flex-1 min-w-0">
+                    <div className="h-4 w-24 bg-slate-200 rounded-md" />
+                    <div className="h-5 w-3/4 bg-slate-200 rounded-md" />
+                    <div className="h-3 w-1/2 bg-slate-200 rounded-md" />
+                  </div>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
+                  <div className="h-3 w-28 bg-slate-200 rounded-md" />
+                  <div className="h-3 w-36 bg-slate-200 rounded-md" />
+                </div>
+                <div className="pt-4 border-t border-slate-100 flex items-center gap-2.5">
+                  <div className="h-9 flex-1 bg-slate-200 rounded-xl" />
+                  <div className="h-9 flex-1 bg-teal-100 rounded-xl" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : error && doctors.length === 0 ? (
+          <div className="bg-white p-12 rounded-3xl border border-rose-200 text-center space-y-3 max-w-lg mx-auto">
+            <User className="w-12 h-12 text-rose-300 mx-auto" />
+            <h3 className="text-base font-bold text-slate-700">
+              {lang === 'en' ? 'Unable to load doctors' : 'চিকিৎসকদের তালিকা লোড করা যায়নি'}
+            </h3>
+            <p className="text-xs text-slate-500">{error}</p>
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                className="mt-3 px-4 py-2 bg-[#007E70] text-white text-xs font-bold rounded-xl shadow-xs hover:bg-[#009282] transition-colors cursor-pointer"
+              >
+                {lang === 'en' ? 'Try Again' : 'পুনরায় চেষ্টা করুন'}
+              </button>
+            )}
+          </div>
+        ) : doctors.length === 0 ? (
           <div className="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3 max-w-lg mx-auto">
             <User className="w-12 h-12 text-slate-300 mx-auto" />
             <h3 className="text-base font-bold text-slate-700">
@@ -157,7 +222,10 @@ export const DoctorsPage: React.FC<DoctorsPageProps> = ({
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
             {filteredDoctors.map((doctor) => {
-              const dept = getDepartment(doctor.departmentId);
+              const dept = getDoctorDepartment(doctor);
+              const deptDisplayName = dept
+                ? (lang === 'en' ? dept.name : dept.nameBn || dept.name)
+                : doctor.departmentName || (lang === 'en' ? 'Specialist Physician' : 'বিশেষজ্ঞ চিকিৎসক');
               const scheduleSummary = getDoctorPublicScheduleSummary(doctor, lang);
               return (
                 <div
@@ -176,11 +244,9 @@ export const DoctorsPage: React.FC<DoctorsPageProps> = ({
                       </div>
                       <div className="space-y-1 min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          {dept && (
-                            <span className="inline-block px-2.5 py-0.5 bg-teal-50 text-[#007E70] text-[10px] font-bold rounded-md border border-teal-100 truncate max-w-full">
-                              {lang === 'en' ? dept.name : dept.nameBn || dept.name}
-                            </span>
-                          )}
+                          <span className="inline-block px-2.5 py-0.5 bg-teal-50 text-[#007E70] text-[10px] font-bold rounded-md border border-teal-100 truncate max-w-full">
+                            {deptDisplayName}
+                          </span>
                           {scheduleSummary.badge && (
                             <span className="inline-block px-2 py-0.5 bg-purple-50 text-purple-700 text-[10px] font-bold rounded-md border border-purple-100">
                               {scheduleSummary.badge}
@@ -258,7 +324,7 @@ export const DoctorsPage: React.FC<DoctorsPageProps> = ({
       {selectedDoctor && (
         <DoctorProfileModal
           doctor={selectedDoctor}
-          department={getDepartment(selectedDoctor.departmentId)}
+          department={getDoctorDepartment(selectedDoctor)}
           onClose={() => setSelectedDoctor(null)}
           onBook={onBookDoctor}
           lang={lang}

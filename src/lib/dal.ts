@@ -2283,17 +2283,23 @@ export const DataAccessLayer = {
       });
 
       const currentInStorage = loadFromStorage<Doctor[]>(STORAGE_KEYS.DOCTORS, []);
+      const DEMO_NAMES = [
+        'Dr. Arindam Banerjee',
+        'Dr. Sarmistha Mukherjee',
+        'Dr. Debabrata Roy',
+        'Dr. Nandini Sengupta'
+      ];
+      const DEMO_IDS = ['doc-01', 'doc-02', 'doc-03', 'doc-04'];
       const realOnly = currentInStorage.filter(
         (doc: any) =>
           doc &&
           typeof doc === 'object' &&
           doc.name &&
           typeof doc.name === 'string' &&
-          !['Dr. Arindam Banerjee', 'Dr. Sarmistha Mukherjee', 'Dr. Debabrata Roy', 'Dr. Nandini Sengupta'].includes(doc.name.trim()) &&
-          !['doc-01', 'doc-02', 'doc-03', 'doc-04'].includes(doc.id) &&
+          !DEMO_NAMES.includes(doc.name.trim()) &&
+          !DEMO_IDS.includes(doc.id) &&
           !doc.serviceType &&
-          !doc.category &&
-          doc.departmentId
+          !doc.category
       );
 
       if (realOnly.length !== currentInStorage.length) {
@@ -2322,16 +2328,18 @@ export const DataAccessLayer = {
         const cleanDoctors = data.doctors.filter(
           (d: any) =>
             d &&
+            typeof d === 'object' &&
             d.name &&
             typeof d.name === 'string' &&
             !DEMO_NAMES.includes(d.name.trim()) &&
             !DEMO_IDS.includes(d.id) &&
             !d.serviceType &&
-            !d.category &&
-            d.departmentId
+            !d.category
         );
-        runtimeDoctorCache = cleanDoctors;
-        saveToStorage(STORAGE_KEYS.DOCTORS, cleanDoctors);
+        if (cleanDoctors.length > 0) {
+          runtimeDoctorCache = cleanDoctors;
+          saveToStorage(STORAGE_KEYS.DOCTORS, cleanDoctors);
+        }
       }
       if (Array.isArray(data.departments) && data.departments.length > 0) {
         saveToStorage(STORAGE_KEYS.DEPARTMENTS, data.departments);

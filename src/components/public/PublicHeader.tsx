@@ -307,7 +307,7 @@ export const PublicHeader: React.FC<PublicHeaderProps> = ({
                   {cleanPhone}
                 </div>
                 <div className="text-[10px] text-slate-500 font-semibold leading-tight">
-                  {lang === 'en' ? 'Mon–Sat 9am–7pm' : 'সোম–শনি সকাল ৯টা–সন্ধ্যা ৭টা'}
+                  Help Line 24x7
                 </div>
               </div>
             </a>

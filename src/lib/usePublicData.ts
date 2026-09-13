@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { DataAccessLayer } from './dal';
+import { apiClient } from './apiClient';
 import {
   Doctor,
   Service,
@@ -13,7 +14,9 @@ import {
 } from '../types';
 
 export function usePublicData() {
-  const [doctors, setDoctors] = useState<Doctor[]>(() => DataAccessLayer.getPublicDoctors());
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [doctorsLoading, setDoctorsLoading] = useState<boolean>(true);
+  const [doctorsError, setDoctorsError] = useState<string | null>(null);
   const [services, setServices] = useState<Service[]>(() => DataAccessLayer.getPublicServices());
   const [departments, setDepartments] = useState<Department[]>(() => DataAccessLayer.getPublicDepartments());
   const [patientStories, setPatientStories] = useState<PatientStory[]>(() => DataAccessLayer.getPublicPatientStories());
@@ -24,8 +27,33 @@ export function usePublicData() {
   const [loading, setLoading] = useState<boolean>(true);
   const [apiError, setApiError] = useState<string | null>(null);
 
+  const fetchAuthoritativeDoctors = useCallback(async () => {
+    try {
+      setDoctorsLoading(true);
+      const serverDoctors = await apiClient.getDoctors();
+      if (Array.isArray(serverDoctors)) {
+        const active = serverDoctors.filter(
+          (d) => d && d.name && d.status === 'ACTIVE' && d.active !== false
+        );
+        setDoctors(active);
+        setDoctorsError(null);
+        return active;
+      }
+    } catch (err: any) {
+      console.warn('[usePublicData] Doctor fetch note:', err);
+      setDoctors((prev) => {
+        if (prev.length === 0) {
+          setDoctorsError(err.message || 'Unable to load doctor directory');
+        }
+        return prev;
+      });
+    } finally {
+      setDoctorsLoading(false);
+    }
+  }, []);
+
   const refreshPublicData = useCallback(() => {
-    setDoctors(DataAccessLayer.getPublicDoctors());
+    // Note: Public doctors are maintained authoritatively from GET /api/doctors
     setServices(DataAccessLayer.getPublicServices());
     setDepartments(DataAccessLayer.getPublicDepartments());
     setPatientStories(DataAccessLayer.getPublicPatientStories());
@@ -41,15 +69,10 @@ export function usePublicData() {
     async function loadInitialData() {
       try {
         setLoading(true);
-        // 1. Fetch authoritative doctor records from the production API
-        const serverDoctors = await DataAccessLayer.fetchDoctorsFromApi();
-        if (isMounted) {
-          const active = serverDoctors.filter((d) => d.status === 'ACTIVE' && d.active !== false);
-          setDoctors(active);
-          setApiError(null);
-        }
+        // 1. Fetch authoritative doctor records directly from the production API
+        await fetchAuthoritativeDoctors();
 
-        // 2. Sync full dataset (departments, services, settings)
+        // 2. Sync auxiliary dataset (departments, services, settings)
         await DataAccessLayer.syncWithServer();
         if (isMounted) {
           refreshPublicData();
@@ -58,7 +81,6 @@ export function usePublicData() {
         if (isMounted) {
           console.warn('Initial public data fetch note:', err);
           setApiError(err.message || 'Error connecting to production data source');
-          // Still fallback to locally cached data
           refreshPublicData();
         }
       } finally {
@@ -70,8 +92,14 @@ export function usePublicData() {
 
     loadInitialData();
 
-    const handleDataUpdate = () => {
-      refreshPublicData();
+    const handleDataUpdate = (e?: Event) => {
+      const customEvent = e as CustomEvent<{ entity?: string }>;
+      const entity = customEvent?.detail?.entity;
+      if (entity === 'Doctor') {
+        fetchAuthoritativeDoctors();
+      } else {
+        refreshPublicData();
+      }
     };
 
     window.addEventListener('careon_data_updated', handleDataUpdate);
@@ -82,7 +110,7 @@ export function usePublicData() {
       window.removeEventListener('careon_data_updated', handleDataUpdate);
       window.removeEventListener('storage', handleDataUpdate);
     };
-  }, [refreshPublicData]);
+  }, [fetchAuthoritativeDoctors, refreshPublicData]);
 
   const submitAppointment = useCallback(
     (
@@ -98,6 +126,9 @@ export function usePublicData() {
 
   return {
     doctors,
+    doctorsLoading,
+    doctorsError,
+    fetchAuthoritativeDoctors,
     services,
     departments,
     patientStories,
