@@ -84,6 +84,10 @@ export const ServiceManager: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    Promise.all([
+      DataAccessLayer.fetchServicesFromApi(),
+      DataAccessLayer.fetchDepartmentsFromApi()
+    ]).then(() => loadData()).catch(() => {});
     const handleUpdate = () => loadData();
     window.addEventListener('careon_data_updated', handleUpdate);
     return () => window.removeEventListener('careon_data_updated', handleUpdate);

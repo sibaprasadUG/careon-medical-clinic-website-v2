@@ -9,8 +9,12 @@ import {
   WebsiteSettings,
   SEOSettings,
   AuditLog,
-  AdminUser
+  AdminUser,
+  InsurancePartner
 } from '../types';
+import { MASTER_DEPARTMENTS } from './masterDepartments';
+import { MASTER_SERVICES } from './masterServices';
+import { MASTER_INSURANCE_PARTNERS } from './masterInsurance';
 
 export const DEFAULT_ADMIN_USERS: AdminUser[] = [
   {
@@ -22,245 +26,13 @@ export const DEFAULT_ADMIN_USERS: AdminUser[] = [
   }
 ];
 
-export const DEFAULT_DEPARTMENTS: Department[] = [
-  {
-    id: 'dept-gen-med',
-    name: 'General Medicine & Family Health',
-    nameBn: 'জেনারেল মেডিসিন ও পারিবারিক স্বাস্থ্য',
-    slug: 'general-medicine',
-    shortDescription: 'Comprehensive acute illness management, chronic disease prevention, and regular health assessments.',
-    description: 'Our General Medicine department provides holistic primary care, fever management, diabetes & hypertension monitoring, and routine medical screenings for all family members.',
-    imageUrl: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&q=80&w=800',
-    icon: 'Stethoscope',
-    featured: true,
-    displayOrder: 1,
-    status: 'ACTIVE',
-    createdAt: '2026-01-10T08:00:00.000Z',
-    updatedAt: '2026-01-10T08:00:00.000Z'
-  },
-  {
-    id: 'dept-pediatrics',
-    name: 'Pediatrics & Child Wellness',
-    nameBn: 'শিশু চিকিৎসা ও যত্ন',
-    slug: 'pediatrics',
-    shortDescription: 'Gentle, attentive clinical care for newborns, infants, children, and adolescents.',
-    description: 'Expert pediatricians providing newborn screenings, developmental milestone assessments, pediatric nutrition, and seasonal infection care.',
-    imageUrl: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=800',
-    icon: 'Baby',
-    featured: true,
-    displayOrder: 2,
-    status: 'ACTIVE',
-    createdAt: '2026-01-10T08:00:00.000Z',
-    updatedAt: '2026-01-10T08:00:00.000Z'
-  },
-  {
-    id: 'dept-cardiology',
-    name: 'Cardiology & Preventive Heart Care',
-    nameBn: 'কার্ডিওলজি ও হৃদরোগ প্রতিরোধ',
-    slug: 'cardiology',
-    shortDescription: 'Cardiac risk evaluation, diagnostic ECG, blood pressure regulation, and lifestyle cardiology.',
-    description: 'Focusing on early detection of cardiovascular risks, hypertension management, cholesterol monitoring, and non-invasive cardiac screenings.',
-    imageUrl: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=800',
-    icon: 'Heart',
-    featured: true,
-    displayOrder: 3,
-    status: 'ACTIVE',
-    createdAt: '2026-01-10T08:00:00.000Z',
-    updatedAt: '2026-01-10T08:00:00.000Z'
-  },
-  {
-    id: 'dept-gynecology',
-    name: 'Obstetrics & Gynecology',
-    nameBn: 'স্ত্রী ও প্রসূতি রোগ বিশেষজ্ঞ',
-    slug: 'gynecology',
-    shortDescription: 'Compassionate women’s health across every phase of life, antenatal consultation, and wellness.',
-    description: 'Specialized healthcare dedicated to maternal wellness, antenatal counseling, PCOS/PCOD management, routine screening, and menopausal health.',
-    imageUrl: 'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&q=80&w=800',
-    icon: 'ShieldCheck',
-    featured: true,
-    displayOrder: 4,
-    status: 'ACTIVE',
-    createdAt: '2026-01-10T08:00:00.000Z',
-    updatedAt: '2026-01-10T08:00:00.000Z'
-  },
-  {
-    id: 'dept-orthopedics',
-    name: 'Orthopedics & Joint Care',
-    nameBn: 'অর্থোপেডিকস ও হাড়-জয়েন্ট কেয়ার',
-    slug: 'orthopedics',
-    shortDescription: 'Diagnosis and conservative management of bone, joint, ligament, and spine conditions.',
-    description: 'Comprehensive bone health evaluation, arthritis pain management, postural correction, osteopenia screening, and post-injury rehabilitation advice.',
-    imageUrl: 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&q=80&w=800',
-    icon: 'Activity',
-    featured: false,
-    displayOrder: 5,
-    status: 'ACTIVE',
-    createdAt: '2026-01-10T08:00:00.000Z',
-    updatedAt: '2026-01-10T08:00:00.000Z'
-  }
-];
+export const DEFAULT_DEPARTMENTS: Department[] = MASTER_DEPARTMENTS;
 
 export const DEFAULT_DOCTORS: Doctor[] = [];
 
-export const DEFAULT_SERVICES: Service[] = [
-  {
-    id: 'srv-01',
-    name: 'Comprehensive Health & Preventive Checkup',
-    nameBn: 'সার্বিক স্বাস্থ্য পরীক্ষা ও প্রতিরোধমূলক চেকআপ',
-    slug: 'comprehensive-health-checkup',
-    shortDescription: 'Full clinical evaluation including complete blood count, blood sugar, lipid profile, liver & kidney panels, and doctor consultation.',
-    description: 'CareOn’s signature preventive health evaluation package structured to detect early markers of metabolic and lifestyle conditions with complete clinical review.',
-    departmentId: 'dept-gen-med',
-    category: 'Preventive',
-    serviceType: 'BOTH',
-    availableForHome: true,
-    availableAtClinic: true,
-    icon: 'Activity',
-    imageUrl: 'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&q=80&w=800',
-    preparationInstructions: [
-      'Overnight fasting of 8-10 hours required for fasting glucose and lipid panel.',
-      'Drink normal water as needed.',
-      'Bring recent medication details and previous medical reports.'
-    ],
-    reportTurnaroundTime: 'Same-day evening or 24 hours',
-    bookingEnabled: true,
-    featured: true,
-    displayOrder: 1,
-    status: 'ACTIVE',
-    createdAt: '2026-01-12T10:00:00.000Z',
-    updatedAt: '2026-01-12T10:00:00.000Z'
-  },
-  {
-    id: 'srv-02',
-    name: '12-Lead Diagnostic ECG & Rhythm Evaluation',
-    nameBn: '১২-লিড ইসিজি ও রিদম মূল্যায়ন',
-    slug: 'diagnostic-ecg',
-    shortDescription: 'High-precision digital 12-lead Electrocardiogram interpreted by our consultant cardiologists.',
-    description: 'Immediate non-invasive electrical heart rhythm tracing for evaluating chest discomfort, palpitations, breathlessness, or pre-operative medical fitness.',
-    departmentId: 'dept-cardiology',
-    category: 'Diagnostic',
-    serviceType: 'CLINIC',
-    availableForHome: false,
-    availableAtClinic: true,
-    icon: 'Heart',
-    imageUrl: 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&q=80&w=800',
-    preparationInstructions: [
-      'Wear loose, comfortable clothing for easy chest electrode placement.',
-      'No fasting required.'
-    ],
-    reportTurnaroundTime: 'Immediate within 30 minutes',
-    bookingEnabled: true,
-    featured: true,
-    displayOrder: 2,
-    status: 'ACTIVE',
-    createdAt: '2026-01-12T10:00:00.000Z',
-    updatedAt: '2026-01-12T10:00:00.000Z'
-  },
-  {
-    id: 'srv-03',
-    name: 'Child Wellness & Growth Assessment',
-    nameBn: 'শিশু স্বাস্থ্য ও শারীরিক বৃদ্ধি মূল্যায়ন',
-    slug: 'child-growth-assessment',
-    shortDescription: 'Detailed developmental milestones check, height-weight percentile mapping, and nutritional guidance.',
-    description: 'Structured pediatrician-led examination for monitoring child physical growth, vision & hearing reflexes, motor skill development, and immunization schedule verification.',
-    departmentId: 'dept-pediatrics',
-    category: 'Consultation',
-    serviceType: 'CLINIC',
-    availableForHome: false,
-    availableAtClinic: true,
-    icon: 'Baby',
-    imageUrl: 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&q=80&w=800',
-    preparationInstructions: [
-      'Bring child’s immunization record book and birth records.',
-      'Prepare any specific dietary or sleep concerns beforehand.'
-    ],
-    reportTurnaroundTime: 'Delivered at consultation',
-    bookingEnabled: true,
-    featured: true,
-    displayOrder: 3,
-    status: 'ACTIVE',
-    createdAt: '2026-01-12T10:00:00.000Z',
-    updatedAt: '2026-01-12T10:00:00.000Z'
-  },
-  {
-    id: 'srv-04',
-    name: 'Women’s Wellness & Antenatal Care',
-    nameBn: 'নারী স্বাস্থ্য ও প্রসূতি পরামর্শ',
-    slug: 'antenatal-womens-wellness',
-    shortDescription: 'Personalized clinical consultations for expectant mothers, hormonal balance, and preventative gynecological screenings.',
-    description: 'CareOn provides private, empathetic clinical care for mothers-to-be, trimester-by-trimester health monitoring, and routine pelvic wellness checks.',
-    departmentId: 'dept-gynecology',
-    category: 'Specialized',
-    serviceType: 'CLINIC',
-    availableForHome: false,
-    availableAtClinic: true,
-    icon: 'ShieldCheck',
-    imageUrl: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=800',
-    preparationInstructions: [
-      'Bring previous ultrasound reports and current prescription sheets.',
-      'Consultation does not require prior fasting.'
-    ],
-    reportTurnaroundTime: 'Immediate clinical review',
-    bookingEnabled: true,
-    featured: true,
-    displayOrder: 4,
-    status: 'ACTIVE',
-    createdAt: '2026-01-12T10:00:00.000Z',
-    updatedAt: '2026-01-12T10:00:00.000Z'
-  },
-  {
-    id: 'srv-05',
-    name: 'Doorstep Blood Sample & Lab Collection',
-    nameBn: 'বাড়ি থেকে ব্লাড স্যাম্পল ও ল্যাব কালেকশন',
-    slug: 'doorstep-blood-sample-collection',
-    shortDescription: 'Trained phlebotomist visit to your home for safe, hygienic blood, urine and routine diagnostic sample pickup.',
-    description: 'Hygienic, temperature-controlled doorstep diagnostic sample collection across Contai and surrounding localities for elderly or bedridden patients.',
-    departmentId: 'dept-gen-med',
-    category: 'Diagnostic',
-    serviceType: 'HOME',
-    availableForHome: true,
-    availableAtClinic: false,
-    icon: 'Activity',
-    imageUrl: 'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&q=80&w=800',
-    preparationInstructions: [
-      'Keep patient resting comfortably prior to sample draw.',
-      'Confirm if fasting is required for the requested panel.'
-    ],
-    reportTurnaroundTime: 'Digital delivery within 12-24 hours',
-    bookingEnabled: true,
-    featured: true,
-    displayOrder: 5,
-    status: 'ACTIVE',
-    createdAt: '2026-01-12T10:00:00.000Z',
-    updatedAt: '2026-01-12T10:00:00.000Z'
-  },
-  {
-    id: 'srv-06',
-    name: 'Home Nursing & Vital Signs Monitoring',
-    nameBn: 'হোম নার্সিং ও ভাইটাল মনিটরিং সেবা',
-    slug: 'home-nursing-vital-monitoring',
-    shortDescription: 'Professional at-home vital sign monitoring (BP, Blood Glucose, SpO2), injection administration, and dressing changes.',
-    description: 'Certified healthcare assistant home visits for post-discharge wound dressing, regular blood pressure optimization, insulin education, and basic patient care support.',
-    departmentId: 'dept-gen-med',
-    category: 'Specialized',
-    serviceType: 'HOME',
-    availableForHome: true,
-    availableAtClinic: false,
-    icon: 'ShieldCheck',
-    imageUrl: 'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&q=80&w=800',
-    preparationInstructions: [
-      'Keep recent doctor prescription sheets ready for the nursing attendant.',
-      'Ensure comfortable seating / bedding arrangement.'
-    ],
-    reportTurnaroundTime: 'Immediate clinical recording',
-    bookingEnabled: true,
-    featured: true,
-    displayOrder: 6,
-    status: 'ACTIVE',
-    createdAt: '2026-01-12T10:00:00.000Z',
-    updatedAt: '2026-01-12T10:00:00.000Z'
-  }
-];
+export const DEFAULT_SERVICES: Service[] = MASTER_SERVICES;
+
+export const DEFAULT_INSURANCE_PARTNERS: InsurancePartner[] = MASTER_INSURANCE_PARTNERS;
 
 export const DEFAULT_PATIENT_STORIES: PatientStory[] = [
   {

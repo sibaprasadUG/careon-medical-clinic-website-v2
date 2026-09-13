@@ -2,10 +2,13 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { Doctor, Department, Service, WebsiteSettings, MediaAsset, AdminUser, AppointmentRequest, ServerStore } from '../src/types';
+import { Doctor, Department, Service, WebsiteSettings, MediaAsset, AdminUser, AppointmentRequest, ServerStore, InsurancePartner } from '../src/types';
 import { DEFAULT_DEPARTMENTS, DEFAULT_SERVICES, DEFAULT_WEBSITE_SETTINGS } from '../src/data/seedData';
 import { PROJECT_ASSETS_MANIFEST } from '../src/data/assetsManifest';
 import { INITIAL_PRODUCTION_STORE } from '../src/data/productionStoreSnapshot';
+import { MASTER_DEPARTMENTS } from '../src/data/masterDepartments';
+import { MASTER_SERVICES } from '../src/data/masterServices';
+import { MASTER_INSURANCE_PARTNERS } from '../src/data/masterInsurance';
 import {
   isSupabaseConfigured,
   getSupabaseDoctors,
@@ -14,7 +17,13 @@ import {
   deleteSupabaseDoctor,
   reorderSupabaseDoctors,
   getSupabaseDepartments,
+  upsertSupabaseDepartment,
+  deleteSupabaseDepartment,
   getSupabaseServices,
+  upsertSupabaseService,
+  deleteSupabaseService,
+  getSupabaseInsurancePartners,
+  saveSupabaseInsurancePartners,
   getSupabaseSettings,
   saveSupabaseSettings,
   checkSupabaseHealth,
@@ -190,12 +199,13 @@ export async function persistLocalStore(store: ServerStore): Promise<void> {
 export async function getPersistentStore(): Promise<ServerStore> {
   if (isSupabaseConfigured()) {
     try {
-      const [doctors, departments, services, settings, assets] = await Promise.all([
+      const [doctors, departments, services, settings, assets, insurancePartners] = await Promise.all([
         getSupabaseDoctors(),
         getSupabaseDepartments(),
         getSupabaseServices(),
         getSupabaseSettings(),
-        getSupabaseMediaAssets()
+        getSupabaseMediaAssets(),
+        getSupabaseInsurancePartners()
       ]);
 
       const store: ServerStore = {
@@ -204,6 +214,7 @@ export async function getPersistentStore(): Promise<ServerStore> {
         services: services && services.length > 0 ? services : DEFAULT_SERVICES,
         settings: settings || DEFAULT_WEBSITE_SETTINGS,
         assets: assets && assets.length > 0 ? assets : PROJECT_ASSETS_MANIFEST,
+        insurancePartners: insurancePartners && insurancePartners.length > 0 ? insurancePartners : MASTER_INSURANCE_PARTNERS,
         invalidatedTokens: inMemoryStore?.invalidatedTokens || [],
         lastUpdated: new Date().toISOString()
       };
@@ -835,6 +846,7 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
       services: store.services,
       settings: store.settings,
       assets: store.assets,
+      insurancePartners: store.insurancePartners || [],
       source: isSupabaseConfigured() ? 'supabase_postgresql' : 'local_store',
       lastUpdated: store.lastUpdated
     });
@@ -900,6 +912,7 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
         return jsonResponse(200, {
           success: true,
           departments,
+          total: departments.length,
           source: 'supabase_postgresql'
         });
       } catch (sbErr: any) {
@@ -911,8 +924,116 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
     return jsonResponse(200, {
       success: true,
       departments: store.departments,
+      total: store.departments.length,
       source: 'local_store'
     });
+  }
+
+  // POST /api/departments (Admin create or update department)
+  if (cleanPath === '/departments' && method === 'POST') {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    const deptData = req.body as Partial<Department>;
+    if (!deptData || !deptData.name) {
+      return jsonResponse(400, { success: false, error: 'Department name is required.' });
+    }
+
+    if (isSupabaseConfigured()) {
+      try {
+        const savedDept = await upsertSupabaseDepartment(deptData);
+        return jsonResponse(201, {
+          success: true,
+          department: savedDept,
+          source: 'supabase_postgresql'
+        });
+      } catch (sbErr: any) {
+        return jsonResponse(500, { success: false, error: sbErr.message });
+      }
+    }
+
+    const store = await getLocalStore();
+    const existingIdx = store.departments.findIndex((d) => d.id === deptData.id || d.slug === deptData.slug);
+    const newDept: Department = {
+      id: deptData.id || `dept-${Date.now()}`,
+      name: deptData.name,
+      slug: deptData.slug || deptData.name.toLowerCase().replace(/[\s_]+/g, '-'),
+      shortDescription: deptData.shortDescription || deptData.description || '',
+      description: deptData.description || deptData.shortDescription || '',
+      imageUrl: deptData.imageUrl || '',
+      icon: deptData.icon || 'Stethoscope',
+      featured: deptData.featured || false,
+      displayOrder: deptData.displayOrder || store.departments.length + 1,
+      status: deptData.status || 'ACTIVE',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (existingIdx >= 0) {
+      store.departments[existingIdx] = { ...store.departments[existingIdx], ...newDept };
+    } else {
+      store.departments.push(newDept);
+    }
+    await persistLocalStore(store);
+
+    return jsonResponse(201, { success: true, department: newDept, source: 'local_store' });
+  }
+
+  // PUT /api/departments/:id (Admin update department)
+  if (cleanPath.startsWith('/departments/') && cleanPath.split('/').length === 3 && (method === 'PUT' || method === 'PATCH')) {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    const deptId = cleanPath.split('/')[2];
+    const deptData = req.body as Partial<Department>;
+
+    if (isSupabaseConfigured()) {
+      try {
+        const updated = await upsertSupabaseDepartment({ ...deptData, id: deptId });
+        return jsonResponse(200, { success: true, department: updated, source: 'supabase_postgresql' });
+      } catch (sbErr: any) {
+        return jsonResponse(500, { success: false, error: sbErr.message });
+      }
+    }
+
+    const store = await getLocalStore();
+    const idx = store.departments.findIndex((d) => d.id === deptId);
+    if (idx === -1) {
+      return jsonResponse(404, { success: false, error: 'Department not found.' });
+    }
+    store.departments[idx] = { ...store.departments[idx], ...deptData, updatedAt: new Date().toISOString() };
+    await persistLocalStore(store);
+
+    return jsonResponse(200, { success: true, department: store.departments[idx], source: 'local_store' });
+  }
+
+  // DELETE /api/departments/:id (Admin delete department)
+  if (cleanPath.startsWith('/departments/') && cleanPath.split('/').length === 3 && method === 'DELETE') {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    const deptId = cleanPath.split('/')[2];
+
+    if (isSupabaseConfigured()) {
+      try {
+        await deleteSupabaseDepartment(deptId);
+        return jsonResponse(200, { success: true, message: `Department ${deptId} deleted.`, source: 'supabase_postgresql' });
+      } catch (sbErr: any) {
+        return jsonResponse(500, { success: false, error: sbErr.message });
+      }
+    }
+
+    const store = await getLocalStore();
+    store.departments = store.departments.filter((d) => d.id !== deptId);
+    await persistLocalStore(store);
+
+    return jsonResponse(200, { success: true, message: `Department ${deptId} deleted.`, source: 'local_store' });
   }
 
   // GET /api/services (List all clinical services from Supabase or fallback)
@@ -923,6 +1044,7 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
         return jsonResponse(200, {
           success: true,
           services,
+          total: services.length,
           source: 'supabase_postgresql'
         });
       } catch (sbErr: any) {
@@ -934,8 +1056,309 @@ export async function handleApiRequest(req: ApiRequest): Promise<ApiResponse> {
     return jsonResponse(200, {
       success: true,
       services: store.services,
+      total: store.services.length,
       source: 'local_store'
     });
+  }
+
+  // POST /api/services (Admin create or update service)
+  if (cleanPath === '/services' && method === 'POST') {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    const srvData = req.body as Partial<Service>;
+    if (!srvData || !srvData.name) {
+      return jsonResponse(400, { success: false, error: 'Service name is required.' });
+    }
+
+    if (isSupabaseConfigured()) {
+      try {
+        const savedSrv = await upsertSupabaseService(srvData);
+        return jsonResponse(201, {
+          success: true,
+          service: savedSrv,
+          source: 'supabase_postgresql'
+        });
+      } catch (sbErr: any) {
+        return jsonResponse(500, { success: false, error: sbErr.message });
+      }
+    }
+
+    const store = await getLocalStore();
+    const existingIdx = store.services.findIndex((s) => s.id === srvData.id || s.slug === srvData.slug);
+    const newSrv: Service = {
+      id: srvData.id || `srv-${Date.now()}`,
+      name: srvData.name,
+      slug: srvData.slug || srvData.name.toLowerCase().replace(/[\s_]+/g, '-'),
+      departmentId: srvData.departmentId || '',
+      shortDescription: srvData.shortDescription || srvData.description || '',
+      description: srvData.description || srvData.shortDescription || '',
+      category: srvData.category || 'Clinical',
+      serviceType: srvData.serviceType || 'BOTH',
+      availableForHome: srvData.availableForHome !== false,
+      availableAtClinic: srvData.availableAtClinic !== false,
+      price: srvData.price,
+      imageUrl: srvData.imageUrl || '',
+      icon: srvData.icon || 'Activity',
+      bookingEnabled: srvData.bookingEnabled !== false,
+      featured: srvData.featured || false,
+      displayOrder: srvData.displayOrder || store.services.length + 1,
+      status: srvData.status || 'ACTIVE',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (existingIdx >= 0) {
+      store.services[existingIdx] = { ...store.services[existingIdx], ...newSrv };
+    } else {
+      store.services.push(newSrv);
+    }
+    await persistLocalStore(store);
+
+    return jsonResponse(201, { success: true, service: newSrv, source: 'local_store' });
+  }
+
+  // PUT /api/services/:id (Admin update service)
+  if (cleanPath.startsWith('/services/') && cleanPath.split('/').length === 3 && (method === 'PUT' || method === 'PATCH')) {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    const srvId = cleanPath.split('/')[2];
+    const srvData = req.body as Partial<Service>;
+
+    if (isSupabaseConfigured()) {
+      try {
+        const updated = await upsertSupabaseService({ ...srvData, id: srvId });
+        return jsonResponse(200, { success: true, service: updated, source: 'supabase_postgresql' });
+      } catch (sbErr: any) {
+        return jsonResponse(500, { success: false, error: sbErr.message });
+      }
+    }
+
+    const store = await getLocalStore();
+    const idx = store.services.findIndex((s) => s.id === srvId);
+    if (idx === -1) {
+      return jsonResponse(404, { success: false, error: 'Service not found.' });
+    }
+    store.services[idx] = { ...store.services[idx], ...srvData, updatedAt: new Date().toISOString() };
+    await persistLocalStore(store);
+
+    return jsonResponse(200, { success: true, service: store.services[idx], source: 'local_store' });
+  }
+
+  // DELETE /api/services/:id (Admin delete service)
+  if (cleanPath.startsWith('/services/') && cleanPath.split('/').length === 3 && method === 'DELETE') {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    const srvId = cleanPath.split('/')[2];
+
+    if (isSupabaseConfigured()) {
+      try {
+        await deleteSupabaseService(srvId);
+        return jsonResponse(200, { success: true, message: `Service ${srvId} deleted.`, source: 'supabase_postgresql' });
+      } catch (sbErr: any) {
+        return jsonResponse(500, { success: false, error: sbErr.message });
+      }
+    }
+
+    const store = await getLocalStore();
+    store.services = store.services.filter((s) => s.id !== srvId);
+    await persistLocalStore(store);
+
+    return jsonResponse(200, { success: true, message: `Service ${srvId} deleted.`, source: 'local_store' });
+  }
+
+  // GET /api/insurance-partners & /api/insurance (List insurance partners from Supabase or fallback)
+  if ((cleanPath === '/insurance-partners' || cleanPath === '/insurance') && method === 'GET') {
+    if (isSupabaseConfigured()) {
+      try {
+        const partners = await getSupabaseInsurancePartners();
+        return jsonResponse(200, {
+          success: true,
+          partners,
+          total: partners.length,
+          source: 'supabase_postgresql'
+        });
+      } catch (sbErr: any) {
+        console.warn('[CareOn API] Supabase GET /insurance-partners note:', sbErr.message);
+      }
+    }
+
+    return jsonResponse(200, {
+      success: true,
+      partners: MASTER_INSURANCE_PARTNERS,
+      total: MASTER_INSURANCE_PARTNERS.length,
+      source: 'master_catalog'
+    });
+  }
+
+  // POST /api/insurance-partners (Admin create/update insurance partner)
+  if ((cleanPath === '/insurance-partners' || cleanPath === '/insurance') && method === 'POST') {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    const partnerData = req.body as Partial<InsurancePartner>;
+    if (!partnerData || !partnerData.name) {
+      return jsonResponse(400, { success: false, error: 'Insurance partner name is required.' });
+    }
+
+    const partners = isSupabaseConfigured() ? await getSupabaseInsurancePartners() : [...MASTER_INSURANCE_PARTNERS];
+    const existingIdx = partners.findIndex((p) => p.id === partnerData.id);
+
+    const partnerToSave: InsurancePartner = {
+      id: partnerData.id || `ins-${Date.now()}`,
+      name: partnerData.name,
+      nameBn: partnerData.nameBn,
+      type: partnerData.type || 'Private Health Insurance',
+      typeBn: partnerData.typeBn,
+      category: partnerData.category,
+      color: partnerData.color || 'from-blue-700 to-indigo-800',
+      cashlessAvailable: Boolean(partnerData.cashlessAvailable),
+      acceptedByClinic: Boolean(partnerData.acceptedByClinic),
+      reimbursementAvailable: Boolean(partnerData.reimbursementAvailable),
+      governmentScheme: Boolean(partnerData.governmentScheme),
+      schemeCode: partnerData.schemeCode,
+      tpaInfo: partnerData.tpaInfo,
+      description: partnerData.description,
+      descriptionBn: partnerData.descriptionBn,
+      coverageDetails: partnerData.coverageDetails,
+      notes: partnerData.notes,
+      helpline: partnerData.helpline,
+      website: partnerData.website,
+      isActive: partnerData.status !== 'INACTIVE',
+      displayOrder: partnerData.displayOrder || partners.length + 1,
+      status: partnerData.status || 'ACTIVE',
+      createdAt: existingIdx >= 0 ? partners[existingIdx].createdAt : new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (existingIdx >= 0) {
+      partners[existingIdx] = partnerToSave;
+    } else {
+      partners.push(partnerToSave);
+    }
+
+    if (isSupabaseConfigured()) {
+      await saveSupabaseInsurancePartners(partners);
+    }
+
+    return jsonResponse(201, {
+      success: true,
+      partner: partnerToSave,
+      partners,
+      source: isSupabaseConfigured() ? 'supabase_postgresql' : 'local_store'
+    });
+  }
+
+  // PUT /api/insurance-partners/:id (Admin update insurance partner)
+  if (
+    (cleanPath.startsWith('/insurance-partners/') || cleanPath.startsWith('/insurance/')) &&
+    cleanPath.split('/').length === 3 &&
+    (method === 'PUT' || method === 'PATCH')
+  ) {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    const partnerId = cleanPath.split('/')[2];
+    const updateData = req.body as Partial<InsurancePartner>;
+
+    const partners = isSupabaseConfigured() ? await getSupabaseInsurancePartners() : [...MASTER_INSURANCE_PARTNERS];
+    const idx = partners.findIndex((p) => p.id === partnerId);
+    if (idx === -1) {
+      return jsonResponse(404, { success: false, error: 'Insurance partner not found.' });
+    }
+
+    partners[idx] = {
+      ...partners[idx],
+      ...updateData,
+      updatedAt: new Date().toISOString()
+    };
+
+    if (isSupabaseConfigured()) {
+      await saveSupabaseInsurancePartners(partners);
+    }
+
+    return jsonResponse(200, {
+      success: true,
+      partner: partners[idx],
+      partners,
+      source: isSupabaseConfigured() ? 'supabase_postgresql' : 'local_store'
+    });
+  }
+
+  // DELETE /api/insurance-partners/:id (Admin delete insurance partner)
+  if (
+    (cleanPath.startsWith('/insurance-partners/') || cleanPath.startsWith('/insurance/')) &&
+    cleanPath.split('/').length === 3 &&
+    method === 'DELETE'
+  ) {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    const partnerId = cleanPath.split('/')[2];
+    let partners = isSupabaseConfigured() ? await getSupabaseInsurancePartners() : [...MASTER_INSURANCE_PARTNERS];
+    partners = partners.filter((p) => p.id !== partnerId);
+
+    if (isSupabaseConfigured()) {
+      await saveSupabaseInsurancePartners(partners);
+    }
+
+    return jsonResponse(200, {
+      success: true,
+      message: `Insurance partner ${partnerId} deleted.`,
+      partners,
+      source: isSupabaseConfigured() ? 'supabase_postgresql' : 'local_store'
+    });
+  }
+
+  // POST /api/seed/master-catalog (Admin master catalog verification and re-seeding)
+  if (cleanPath === '/seed/master-catalog' && method === 'POST') {
+    const auth = verifySessionToken(token);
+    if (!auth.valid || !auth.user) {
+      return jsonResponse(401, { success: false, error: 'Admin authentication required.' });
+    }
+
+    try {
+      if (isSupabaseConfigured()) {
+        for (const dept of MASTER_DEPARTMENTS) {
+          await upsertSupabaseDepartment(dept);
+        }
+        for (const srv of MASTER_SERVICES) {
+          await upsertSupabaseService(srv);
+        }
+        await saveSupabaseInsurancePartners(MASTER_INSURANCE_PARTNERS);
+      }
+
+      const store = await getLocalStore();
+      store.departments = MASTER_DEPARTMENTS;
+      store.services = MASTER_SERVICES;
+      await persistLocalStore(store);
+
+      return jsonResponse(200, {
+        success: true,
+        message: 'Master medical catalog successfully verified and synchronized.',
+        counts: {
+          departments: MASTER_DEPARTMENTS.length,
+          services: MASTER_SERVICES.length,
+          insurance: MASTER_INSURANCE_PARTNERS.length
+        }
+      });
+    } catch (seedErr: any) {
+      return jsonResponse(500, { success: false, error: seedErr.message });
+    }
   }
 
   // GET /api/settings (Website settings from Supabase or fallback)

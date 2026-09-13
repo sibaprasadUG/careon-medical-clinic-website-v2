@@ -1,4 +1,4 @@
-import { Doctor, Department, Service, WebsiteSettings, MediaAsset, AppointmentRequest, SectionMediaSettings } from '../types';
+import { Doctor, Department, Service, WebsiteSettings, MediaAsset, AppointmentRequest, SectionMediaSettings, InsurancePartner } from '../types';
 
 /**
  * Universal API Client for CareOn Medical Clinic
@@ -278,6 +278,115 @@ export const apiClient = {
     return res.departments;
   },
 
+  /**
+   * Save (create or update) department in production database (Admin only).
+   */
+  async saveDepartment(deptData: Partial<Department>): Promise<Department> {
+    const isEdit = Boolean(deptData.id);
+    const path = isEdit ? `/departments/${deptData.id}` : '/departments';
+    const method = isEdit ? 'PUT' : 'POST';
+    const res = await sendApiRequest<{ success: boolean; department: Department; error?: string }>(path, {
+      method,
+      body: deptData,
+      requiresAuth: true
+    });
+    if (!res.success || !res.department) {
+      throw new ApiError(res.error || 'Failed to save department', 400);
+    }
+    return res.department;
+  },
+
+  /**
+   * Delete department from production database (Admin only).
+   */
+  async deleteDepartment(id: string): Promise<boolean> {
+    const res = await sendApiRequest<{ success: boolean; error?: string }>(`/departments/${id}`, {
+      method: 'DELETE',
+      requiresAuth: true
+    });
+    if (!res.success) {
+      throw new ApiError(res.error || 'Failed to delete department', 400);
+    }
+    return true;
+  },
+
+  /**
+   * Save (create or update) service in production database (Admin only).
+   */
+  async saveService(srvData: Partial<Service>): Promise<Service> {
+    const isEdit = Boolean(srvData.id);
+    const path = isEdit ? `/services/${srvData.id}` : '/services';
+    const method = isEdit ? 'PUT' : 'POST';
+    const res = await sendApiRequest<{ success: boolean; service: Service; error?: string }>(path, {
+      method,
+      body: srvData,
+      requiresAuth: true
+    });
+    if (!res.success || !res.service) {
+      throw new ApiError(res.error || 'Failed to save service', 400);
+    }
+    return res.service;
+  },
+
+  /**
+   * Delete service from production database (Admin only).
+   */
+  async deleteService(id: string): Promise<boolean> {
+    const res = await sendApiRequest<{ success: boolean; error?: string }>(`/services/${id}`, {
+      method: 'DELETE',
+      requiresAuth: true
+    });
+    if (!res.success) {
+      throw new ApiError(res.error || 'Failed to delete service', 400);
+    }
+    return true;
+  },
+
+  /**
+   * Fetch insurance partners and schemes from the production database.
+   */
+  async getInsurancePartners(): Promise<InsurancePartner[]> {
+    const res = await sendApiRequest<{ success: boolean; partners: InsurancePartner[]; error?: string }>('/insurance-partners', {
+      requiresAuth: false
+    });
+    if (!res.success || !Array.isArray(res.partners)) {
+      throw new ApiError(res.error || 'Failed to fetch insurance partners', 500);
+    }
+    return res.partners;
+  },
+
+  /**
+   * Save (create or update) insurance partner in production database (Admin only).
+   */
+  async saveInsurancePartner(partnerData: Partial<InsurancePartner>): Promise<InsurancePartner> {
+    const isEdit = Boolean(partnerData.id);
+    const path = isEdit ? `/insurance-partners/${partnerData.id}` : '/insurance-partners';
+    const method = isEdit ? 'PUT' : 'POST';
+    const res = await sendApiRequest<{ success: boolean; partner: InsurancePartner; error?: string }>(path, {
+      method,
+      body: partnerData,
+      requiresAuth: true
+    });
+    if (!res.success || !res.partner) {
+      throw new ApiError(res.error || 'Failed to save insurance partner', 400);
+    }
+    return res.partner;
+  },
+
+  /**
+   * Delete insurance partner from production database (Admin only).
+   */
+  async deleteInsurancePartner(id: string): Promise<boolean> {
+    const res = await sendApiRequest<{ success: boolean; error?: string }>(`/insurance-partners/${id}`, {
+      method: 'DELETE',
+      requiresAuth: true
+    });
+    if (!res.success) {
+      throw new ApiError(res.error || 'Failed to delete insurance partner', 400);
+    }
+    return true;
+  },
+
   // --- Full Data Sync & Retrieval ---
 
   async getAllData(): Promise<{
@@ -286,6 +395,7 @@ export const apiClient = {
     services: Service[];
     settings: WebsiteSettings;
     assets: MediaAsset[];
+    insurancePartners?: InsurancePartner[];
     lastUpdated: string;
   }> {
     const res = await sendApiRequest('/data', { requiresAuth: false });

@@ -437,6 +437,12 @@ export interface InsurancePartner {
   logoUrl?: string;
   logoAssetId?: string;
   cashlessAvailable?: boolean;
+  acceptedByClinic?: boolean;
+  reimbursementAvailable?: boolean;
+  notes?: string;
+  category?: string;
+  schemeCode?: string;
+  governmentScheme?: boolean;
   tpaInfo?: string;
   description?: string;
   descriptionBn?: string;
@@ -547,4 +553,5 @@ export interface ServerStore {
   assets: MediaAsset[];
   invalidatedTokens: string[];
   lastUpdated: string;
+  insurancePartners?: InsurancePartner[];
 }

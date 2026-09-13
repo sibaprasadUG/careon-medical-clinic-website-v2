@@ -63,6 +63,8 @@ export const InsuranceManager: React.FC = () => {
   };
 
   useEffect(() => {
+    refreshList();
+    DataAccessLayer.fetchInsurancePartnersFromApi().then(() => refreshList()).catch(() => {});
     const handleUpdate = () => refreshList();
     window.addEventListener('careon_data_updated', handleUpdate);
     return () => window.removeEventListener('careon_data_updated', handleUpdate);

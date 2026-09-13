@@ -32,6 +32,7 @@ import {
 } from '../data/seedData';
 import { PROJECT_ASSETS_MANIFEST } from '../data/assetsManifest';
 import { apiClient } from './apiClient';
+import { MASTER_INSURANCE_PARTNERS } from '../data/masterInsurance';
 
 const STORAGE_KEYS = {
   DEPARTMENTS: 'careon_cms_departments',
@@ -49,92 +50,7 @@ const STORAGE_KEYS = {
   INSURANCE_PARTNERS: 'careon_cms_insurance_partners'
 };
 
-export const DEFAULT_INSURANCE_PARTNERS: InsurancePartner[] = [
-  {
-    id: 'ins-01',
-    name: 'Swasthya Sathi',
-    nameBn: 'স্বাস্থ্য সাথী',
-    type: 'Govt Health Scheme',
-    typeBn: 'সরকারি স্বাস্থ্য প্রকল্প',
-    color: 'from-emerald-700 to-teal-800',
-    cashlessAvailable: true,
-    tpaInfo: 'West Bengal Government Health Scheme for Family Hospitalization & Day Care Support',
-    displayOrder: 1,
-    status: 'ACTIVE',
-    createdAt: '2026-08-20T00:00:00.000Z',
-    updatedAt: '2026-08-20T00:00:00.000Z'
-  },
-  {
-    id: 'ins-02',
-    name: 'Star Health',
-    nameBn: 'স্টার হেলথ',
-    type: 'Health Insurance',
-    typeBn: 'স্বাস্থ্য বীমা',
-    color: 'from-blue-700 to-indigo-800',
-    cashlessAvailable: true,
-    tpaInfo: 'Individual & Family Optima Cashless / Reimbursement Support',
-    displayOrder: 2,
-    status: 'ACTIVE',
-    createdAt: '2026-08-20T00:00:00.000Z',
-    updatedAt: '2026-08-20T00:00:00.000Z'
-  },
-  {
-    id: 'ins-03',
-    name: 'HDFC ERGO',
-    nameBn: 'এইচডিএফসি এর্গো',
-    type: 'General Insurance',
-    typeBn: 'জেনারেল ইন্স্যুরেন্স',
-    color: 'from-red-700 to-rose-900',
-    cashlessAvailable: true,
-    tpaInfo: 'Optima Restore & Health Suraksha reimbursement claim assistance',
-    displayOrder: 3,
-    status: 'ACTIVE',
-    createdAt: '2026-08-20T00:00:00.000Z',
-    updatedAt: '2026-08-20T00:00:00.000Z'
-  },
-  {
-    id: 'ins-04',
-    name: 'Care Health Insurance',
-    nameBn: 'কেয়ার হেলথ ইন্স্যুরেন্স',
-    type: 'Health Coverage',
-    typeBn: 'সম্পূর্ণ স্বাস্থ্য কভারেজ',
-    color: 'from-cyan-700 to-blue-800',
-    cashlessAvailable: true,
-    tpaInfo: 'Care Advantage & Senior Citizen Health Insurance support',
-    displayOrder: 4,
-    status: 'ACTIVE',
-    createdAt: '2026-08-20T00:00:00.000Z',
-    updatedAt: '2026-08-20T00:00:00.000Z'
-  },
-  {
-    id: 'ins-05',
-    name: 'ICICI Lombard',
-    nameBn: 'আইসিআইসিআই লম্বার্ড',
-    type: 'Health Protection',
-    typeBn: 'হেলথ প্রটেকশন',
-    color: 'from-amber-700 to-orange-800',
-    cashlessAvailable: true,
-    tpaInfo: 'Complete Health Insurance & Critical Illness documentation',
-    displayOrder: 5,
-    status: 'ACTIVE',
-    createdAt: '2026-08-20T00:00:00.000Z',
-    updatedAt: '2026-08-20T00:00:00.000Z'
-  },
-  {
-    id: 'ins-06',
-    name: 'Niva Bupa',
-    nameBn: 'নিভা বুপা',
-    type: 'Comprehensive Health',
-    typeBn: 'কম্প্রিহেনসিভ হেলথ',
-    color: 'from-teal-700 to-emerald-900',
-    cashlessAvailable: true,
-    tpaInfo: 'ReAssure 2.0 & Health Companion claim assistance',
-    displayOrder: 6,
-    status: 'ACTIVE',
-    createdAt: '2026-08-20T00:00:00.000Z',
-    updatedAt: '2026-08-20T00:00:00.000Z'
-  }
-];
+export const DEFAULT_INSURANCE_PARTNERS: InsurancePartner[] = MASTER_INSURANCE_PARTNERS;
 
 // Initial Seed Media Assets for Doctor and Brand Assets
 export const DEFAULT_MEDIA_ASSETS: MediaAsset[] = [
@@ -946,6 +862,9 @@ export const DataAccessLayer = {
     }
 
     notifyDataChange('Department');
+    apiClient.saveDepartment(deptToSave).catch((err) => {
+      console.warn('[CareOn DAL] Background department sync note:', err.message);
+    });
     return deptToSave;
   },
 
@@ -959,6 +878,9 @@ export const DataAccessLayer = {
     saveToStorage(STORAGE_KEYS.DEPARTMENTS, departments);
     recordAudit(adminUser, `DEPARTMENT_STATUS_${newStatus}`, 'Department', dept.id, dept.name, `Status set to ${newStatus}`);
     notifyDataChange('Department');
+    apiClient.saveDepartment(dept).catch((err) => {
+      console.warn('[CareOn DAL] Background department toggle sync note:', err.message);
+    });
   },
 
   deleteDepartment(departmentId: string, adminUser: AdminUser): boolean {
@@ -970,6 +892,9 @@ export const DataAccessLayer = {
     saveToStorage(STORAGE_KEYS.DEPARTMENTS, remaining);
     recordAudit(adminUser, 'DEPARTMENT_DELETED', 'Department', target.id, target.name, 'Permanently deleted department');
     notifyDataChange('Department');
+    apiClient.deleteDepartment(departmentId).catch((err) => {
+      console.warn('[CareOn DAL] Background department delete note:', err.message);
+    });
     return true;
   },
 
@@ -1055,6 +980,9 @@ export const DataAccessLayer = {
     }
 
     notifyDataChange('Service');
+    apiClient.saveService(serviceToSave).catch((err) => {
+      console.warn('[CareOn DAL] Background service sync note:', err.message);
+    });
     return serviceToSave;
   },
 
@@ -1071,6 +999,9 @@ export const DataAccessLayer = {
     saveToStorage(STORAGE_KEYS.SERVICES, services);
     recordAudit(adminUser, `SERVICE_STATUS_${newStatus}`, 'Service', srv.id, srv.name, `Status set to ${newStatus}`);
     notifyDataChange('Service');
+    apiClient.saveService(srv).catch((err) => {
+      console.warn('[CareOn DAL] Background service toggle sync note:', err.message);
+    });
   },
 
   deleteService(serviceId: string, adminUser: AdminUser): boolean {
@@ -1082,6 +1013,9 @@ export const DataAccessLayer = {
     saveToStorage(STORAGE_KEYS.SERVICES, remaining);
     recordAudit(adminUser, 'SERVICE_DELETED', 'Service', target.id, target.name, 'Permanently deleted service');
     notifyDataChange('Service');
+    apiClient.deleteService(serviceId).catch((err) => {
+      console.warn('[CareOn DAL] Background service delete note:', err.message);
+    });
     return true;
   },
 
@@ -1330,6 +1264,20 @@ export const DataAccessLayer = {
       .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
   },
 
+  async fetchInsurancePartnersFromApi(force = false): Promise<InsurancePartner[]> {
+    try {
+      const serverPartners = await apiClient.getInsurancePartners();
+      if (Array.isArray(serverPartners) && serverPartners.length > 0) {
+        saveToStorage(STORAGE_KEYS.INSURANCE_PARTNERS, serverPartners);
+        notifyDataChange('InsurancePartner');
+        return serverPartners;
+      }
+    } catch (err) {
+      console.warn('Could not fetch insurance partners from API, using cached data:', err);
+    }
+    return this.getAllInsurancePartners();
+  },
+
   getActiveInsurancePartners(): InsurancePartner[] {
     return this.getAllInsurancePartners().filter((p) => p.status === 'ACTIVE');
   },
@@ -1381,6 +1329,9 @@ export const DataAccessLayer = {
     }
 
     notifyDataChange('InsurancePartner');
+    apiClient.saveInsurancePartner(partnerToSave).catch((err) => {
+      console.warn('[CareOn DAL] Background insurance partner sync note:', err.message);
+    });
     return partnerToSave;
   },
 
@@ -1394,6 +1345,9 @@ export const DataAccessLayer = {
     saveToStorage(STORAGE_KEYS.INSURANCE_PARTNERS, list);
     recordAudit(adminUser || null, 'INSURANCE_STATUS_TOGGLED', 'InsurancePartner', partner.id, partner.name, `Status set to ${partner.status}`);
     notifyDataChange('InsurancePartner');
+    apiClient.saveInsurancePartner(partner).catch((err) => {
+      console.warn('[CareOn DAL] Background insurance partner toggle sync note:', err.message);
+    });
   },
 
   deleteInsurancePartner(partnerId: string, adminUser?: AdminUser | null) {
@@ -1403,6 +1357,9 @@ export const DataAccessLayer = {
     saveToStorage(STORAGE_KEYS.INSURANCE_PARTNERS, updated);
     recordAudit(adminUser || null, 'INSURANCE_PARTNER_DELETED', 'InsurancePartner', partnerId, partner?.name, 'Deleted insurance partner');
     notifyDataChange('InsurancePartner');
+    apiClient.deleteInsurancePartner(partnerId).catch((err) => {
+      console.warn('[CareOn DAL] Background insurance partner delete note:', err.message);
+    });
   },
 
   // --- APPOINTMENT REQUESTS (Website Queue Only - Non-ERP) ---
@@ -2349,6 +2306,9 @@ export const DataAccessLayer = {
       }
       if (data.settings && typeof data.settings === 'object') {
         saveToStorage(STORAGE_KEYS.SETTINGS, data.settings);
+      }
+      if (Array.isArray(data.insurancePartners) && data.insurancePartners.length > 0) {
+        saveToStorage(STORAGE_KEYS.INSURANCE_PARTNERS, data.insurancePartners);
       }
       notifyDataChange('ServerSync');
     } catch (err) {

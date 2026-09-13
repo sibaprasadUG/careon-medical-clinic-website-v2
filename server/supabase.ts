@@ -12,10 +12,19 @@ import {
   MediaAsset,
   MediaCategory,
   AppointmentRequest,
-  AppointmentStatus
+  AppointmentStatus,
+  InsurancePartner
 } from '../src/types';
 import { DEFAULT_DEPARTMENTS, DEFAULT_SERVICES, DEFAULT_WEBSITE_SETTINGS } from '../src/data/seedData';
 import { PROJECT_ASSETS_MANIFEST } from '../src/data/assetsManifest';
+import { MASTER_DEPARTMENTS, deterministicUuid } from '../src/data/masterDepartments';
+import { MASTER_SERVICES } from '../src/data/masterServices';
+import { MASTER_INSURANCE_PARTNERS } from '../src/data/masterInsurance';
+
+const MASTER_DEPT_BY_ID = new Map(MASTER_DEPARTMENTS.map((d) => [d.id, d]));
+const MASTER_DEPT_BY_SLUG = new Map(MASTER_DEPARTMENTS.map((d) => [d.slug, d]));
+const MASTER_SRV_BY_ID = new Map(MASTER_SERVICES.map((s) => [s.id, s]));
+const MASTER_SRV_BY_SLUG = new Map(MASTER_SERVICES.map((s) => [s.slug, s]));
 
 /**
  * CareOn Medical Clinic - Server-side Supabase PostgreSQL Integration
@@ -326,19 +335,20 @@ export function mapSchedulesToRows(
 
 export function mapRowToDepartment(row: any): Department {
   const isActive = row.is_active !== false;
+  const master = MASTER_DEPT_BY_ID.get(row.id) || (row.slug ? MASTER_DEPT_BY_SLUG.get(row.slug) : undefined);
   return {
     id: row.id,
     name: row.name,
-    nameBn: '',
+    nameBn: master?.nameBn || '',
     slug: row.slug || (row.name || '').toLowerCase().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-'),
-    shortDescription: row.description || '',
-    shortDescriptionBn: '',
-    description: row.description || '',
-    descriptionBn: '',
-    imageUrl: row.image_url || '',
-    icon: 'Stethoscope',
-    featured: false,
-    displayOrder: typeof row.display_order === 'number' ? row.display_order : 0,
+    shortDescription: row.description || master?.shortDescription || '',
+    shortDescriptionBn: master?.shortDescriptionBn || master?.nameBn || '',
+    description: row.description || master?.description || '',
+    descriptionBn: master?.descriptionBn || master?.description || '',
+    imageUrl: row.image_url || master?.imageUrl || '',
+    icon: master?.icon || 'Stethoscope',
+    featured: master ? master.featured : (typeof row.display_order === 'number' && row.display_order <= 6),
+    displayOrder: typeof row.display_order === 'number' ? row.display_order : (master?.displayOrder || 0),
     status: isActive ? 'ACTIVE' : 'INACTIVE',
     createdAt: row.created_at || new Date().toISOString(),
     updatedAt: row.updated_at || new Date().toISOString()
@@ -347,25 +357,32 @@ export function mapRowToDepartment(row: any): Department {
 
 export function mapRowToService(row: any): Service {
   const isActive = row.is_active !== false;
+  const master = MASTER_SRV_BY_ID.get(row.id) || (row.slug ? MASTER_SRV_BY_SLUG.get(row.slug) : undefined);
   return {
     id: row.id,
     name: row.name,
-    nameBn: '',
+    nameBn: master?.nameBn || '',
     slug: row.slug || (row.name || '').toLowerCase().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-'),
-    shortDescription: row.description || '',
-    shortDescriptionBn: '',
-    description: row.description || '',
-    descriptionBn: '',
-    departmentId: row.department_id || '',
-    category: 'Clinical',
-    serviceType: 'BOTH',
-    availableForHome: true,
-    availableAtClinic: true,
+    shortDescription: row.description || master?.shortDescription || '',
+    shortDescriptionBn: master?.shortDescriptionBn || master?.nameBn || '',
+    description: row.description || master?.description || '',
+    descriptionBn: master?.descriptionBn || master?.description || '',
+    departmentId: row.department_id || master?.departmentId || '',
+    category: master?.category || 'Clinical',
+    serviceType: master?.serviceType || 'BOTH',
+    availableForHome: master ? master.availableForHome : true,
+    availableAtClinic: master ? master.availableAtClinic : true,
     price: row.price ? Number(row.price) : undefined,
-    imageUrl: row.image_url || '',
+    imageUrl: row.image_url || master?.imageUrl || '',
+    icon: master?.icon || 'Activity',
+    preparationInstructions: master?.preparationInstructions || [
+      'Bring previous prescriptions and doctor consultation notes.',
+      'Check test requirements for fasting status.'
+    ],
+    reportTurnaroundTime: master?.reportTurnaroundTime || 'Same-day evening or 24 hours',
     bookingEnabled: isActive,
-    featured: false,
-    displayOrder: typeof row.display_order === 'number' ? row.display_order : 0,
+    featured: master ? master.featured : false,
+    displayOrder: typeof row.display_order === 'number' ? row.display_order : (master?.displayOrder || 0),
     status: isActive ? 'ACTIVE' : 'INACTIVE',
     createdAt: row.created_at || new Date().toISOString(),
     updatedAt: row.updated_at || new Date().toISOString()
@@ -594,6 +611,55 @@ export async function getSupabaseDepartments(): Promise<Department[]> {
 }
 
 /**
+ * Upsert department in Supabase PostgreSQL
+ */
+export async function upsertSupabaseDepartment(deptData: Partial<Department>): Promise<Department> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('Supabase client is not configured.');
+
+  const slug =
+    deptData.slug ||
+    (deptData.name || '').toLowerCase().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-');
+  const id = isValidUuid(deptData.id) ? deptData.id! : deterministicUuid(`careon-dept-${slug}`);
+
+  const row = {
+    id,
+    name: deptData.name?.trim() || '',
+    slug,
+    description: deptData.description?.trim() || deptData.shortDescription?.trim() || '',
+    image_url: deptData.imageUrl || null,
+    is_active: deptData.status !== 'INACTIVE',
+    display_order: typeof deptData.displayOrder === 'number' ? deptData.displayOrder : 0,
+    updated_at: new Date().toISOString()
+  };
+
+  const { data, error } = await client.from('departments').upsert(row, { onConflict: 'id' }).select().single();
+  if (error) {
+    console.error('[Supabase] Upsert department error:', error.message);
+    throw new Error(`Failed to upsert department: ${error.message}`);
+  }
+
+  return mapRowToDepartment(data);
+}
+
+/**
+ * Delete department from Supabase PostgreSQL
+ */
+export async function deleteSupabaseDepartment(departmentId: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('Supabase client is not configured.');
+
+  if (isValidUuid(departmentId)) {
+    const { error } = await client.from('departments').delete().eq('id', departmentId);
+    if (error) {
+      console.error('[Supabase] Delete department error:', error.message);
+      throw new Error(`Failed to delete department: ${error.message}`);
+    }
+  }
+  return true;
+}
+
+/**
  * Fetch all services from Supabase
  */
 export async function getSupabaseServices(): Promise<Service[]> {
@@ -610,6 +676,106 @@ export async function getSupabaseServices(): Promise<Service[]> {
   }
 
   return data.map(mapRowToService);
+}
+
+/**
+ * Upsert service in Supabase PostgreSQL
+ */
+export async function upsertSupabaseService(srvData: Partial<Service>): Promise<Service> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('Supabase client is not configured.');
+
+  const slug =
+    srvData.slug ||
+    (srvData.name || '').toLowerCase().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-');
+  const id = isValidUuid(srvData.id) ? srvData.id! : deterministicUuid(`careon-srv-${slug}`);
+
+  const row = {
+    id,
+    name: srvData.name?.trim() || '',
+    slug,
+    department_id: isValidUuid(srvData.departmentId) ? srvData.departmentId : null,
+    description: srvData.description?.trim() || srvData.shortDescription?.trim() || '',
+    price: typeof srvData.price === 'number' ? srvData.price : null,
+    image_url: srvData.imageUrl || null,
+    is_active: srvData.status !== 'INACTIVE',
+    display_order: typeof srvData.displayOrder === 'number' ? srvData.displayOrder : 0,
+    updated_at: new Date().toISOString()
+  };
+
+  const { data, error } = await client.from('services').upsert(row, { onConflict: 'id' }).select().single();
+  if (error) {
+    console.error('[Supabase] Upsert service error:', error.message);
+    throw new Error(`Failed to upsert service: ${error.message}`);
+  }
+
+  return mapRowToService(data);
+}
+
+/**
+ * Delete service from Supabase PostgreSQL
+ */
+export async function deleteSupabaseService(serviceId: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) throw new Error('Supabase client is not configured.');
+
+  if (isValidUuid(serviceId)) {
+    const { error } = await client.from('services').delete().eq('id', serviceId);
+    if (error) {
+      console.error('[Supabase] Delete service error:', error.message);
+      throw new Error(`Failed to delete service: ${error.message}`);
+    }
+  }
+  return true;
+}
+
+/**
+ * Fetch insurance partners from Supabase site_settings table
+ */
+export async function getSupabaseInsurancePartners(): Promise<InsurancePartner[]> {
+  const client = getSupabaseClient();
+  if (!client) return MASTER_INSURANCE_PARTNERS;
+
+  const { data, error } = await client
+    .from('site_settings')
+    .select('setting_value')
+    .eq('setting_key', 'insurance_partners')
+    .maybeSingle();
+
+  if (error || !data || !data.setting_value) {
+    return MASTER_INSURANCE_PARTNERS;
+  }
+
+  try {
+    const parsed =
+      typeof data.setting_value === 'string' ? JSON.parse(data.setting_value) : data.setting_value;
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed;
+    }
+  } catch (err) {
+    console.warn('[Supabase] Failed to parse insurance_partners from site_settings:', err);
+  }
+
+  return MASTER_INSURANCE_PARTNERS;
+}
+
+/**
+ * Save insurance partners to Supabase site_settings table
+ */
+export async function saveSupabaseInsurancePartners(partners: InsurancePartner[]): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) return false;
+
+  const { error } = await client.from('site_settings').upsert(
+    {
+      setting_key: 'insurance_partners',
+      setting_value: JSON.stringify(partners),
+      updated_at: new Date().toISOString()
+    },
+    { onConflict: 'setting_key' }
+  );
+
+  return !error;
 }
 
 /**

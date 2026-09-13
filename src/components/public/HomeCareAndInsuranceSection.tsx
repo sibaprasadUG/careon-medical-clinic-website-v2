@@ -32,6 +32,7 @@ export const HomeCareAndInsuranceSection: React.FC<HomeCareAndInsuranceSectionPr
     const handleUpdate = () => {
       setInsurancePartners(DataAccessLayer.getActiveInsurancePartners());
     };
+    DataAccessLayer.fetchInsurancePartnersFromApi().then(() => handleUpdate()).catch(() => {});
     window.addEventListener('careon_data_updated', handleUpdate);
     return () => window.removeEventListener('careon_data_updated', handleUpdate);
   }, []);
@@ -39,6 +40,9 @@ export const HomeCareAndInsuranceSection: React.FC<HomeCareAndInsuranceSectionPr
   const homeCareImg =
     settings.sectionMedia?.homeCareImage ||
     'https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&q=80&w=900';
+
+  const displayedPartners = insurancePartners.slice(0, 6);
+  const remainingCount = Math.max(0, insurancePartners.length - 6);
 
   return (
     <section className="bg-white py-12 lg:py-16 border-b border-slate-200/80 font-sans-ui">
@@ -128,7 +132,7 @@ export const HomeCareAndInsuranceSection: React.FC<HomeCareAndInsuranceSectionPr
 
               {/* Insurance Brand Badges Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
-                {insurancePartners.map((item) => (
+                {displayedPartners.map((item) => (
                   <div
                     key={item.id || item.name}
                     className="bg-white rounded-xl p-3 border border-slate-200 flex flex-col items-center justify-center text-center shadow-2xs hover:shadow-xs transition-all"
@@ -155,8 +159,8 @@ export const HomeCareAndInsuranceSection: React.FC<HomeCareAndInsuranceSectionPr
             <div className="pt-5 mt-4 border-t border-slate-200/80 text-center sm:text-left">
               <p className="text-xs text-slate-500 font-medium">
                 {lang === 'en'
-                  ? "And many more. Not sure? Call us and we'll check for you:"
-                  : 'অন্যান্য বীমা স্কিমের জন্য সরাসরি আমাদের হেল্পলাইনে কথা বলুন:'}{' '}
+                  ? `And ${remainingCount > 0 ? `${remainingCount}+` : 'many'} more insurance & government schemes. Not sure? Call us and we'll check for you:`
+                  : `এবং আরও ${remainingCount > 0 ? `${remainingCount}+` : 'অন্যান্য'} স্বাস্থ্য বীমা ও সরকারি প্রকল্প। বিস্তারিত জানতে কল করুন:`}{' '}
                 <a
                   href={`tel:${cleanPhone}`}
                   className="font-bold text-[#0B192C] hover:text-[#007E70] transition-colors ml-1"
