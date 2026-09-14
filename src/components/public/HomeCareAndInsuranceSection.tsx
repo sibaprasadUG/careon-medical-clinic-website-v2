@@ -45,7 +45,7 @@ export const HomeCareAndInsuranceSection: React.FC<HomeCareAndInsuranceSectionPr
   const remainingCount = Math.max(0, insurancePartners.length - 6);
 
   return (
-    <section className="bg-white py-12 lg:py-16 border-b border-slate-200/80 font-sans-ui">
+    <section id="insurance" className="bg-white py-12 lg:py-16 border-b border-slate-200/80 font-sans-ui">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
           

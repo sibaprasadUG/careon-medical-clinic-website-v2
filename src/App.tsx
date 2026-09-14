@@ -80,8 +80,22 @@ export default function App() {
         window.location.hash = path;
       }
     }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (path === '/insurance') {
+      setTimeout(() => {
+        document.getElementById('insurance')?.scrollIntoView({ behavior: 'smooth' });
+      }, 50);
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
+
+  useEffect(() => {
+    if (currentPath === '/insurance') {
+      setTimeout(() => {
+        document.getElementById('insurance')?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
+  }, [currentPath]);
 
   const handleOpenBooking = (prefill?: { type: 'DOCTOR' | 'SERVICE'; id?: string }) => {
     setBookingPrefill(prefill);
