@@ -73,11 +73,12 @@ export const HomeCareAndInsuranceSection: React.FC<HomeCareAndInsuranceSectionPr
               </div>
 
               {/* Consultation Photo */}
-              <div className="relative rounded-2xl overflow-hidden shadow-sm aspect-[16/9] border border-slate-200">
+              <div className="relative rounded-2xl overflow-hidden shadow-sm aspect-[16/9] border border-slate-200 bg-slate-50 flex items-center justify-center">
                 <img
                   src={homeCareImg}
                   alt="Doctor video consultation from home"
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain object-center"
+                  style={{ objectFit: 'contain', objectPosition: 'center' }}
                 />
                 <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-xs text-white text-[10px] font-bold flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />

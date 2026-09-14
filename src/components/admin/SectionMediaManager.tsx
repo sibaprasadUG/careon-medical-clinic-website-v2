@@ -520,14 +520,21 @@ export const SectionMediaManager: React.FC = () => {
               <span className="text-slate-400 font-medium">Recommended: {currentSec.recommendedDim}</span>
             </div>
 
+            {/* Visual Preview Container */}
             <div
-              className={`relative rounded-3xl overflow-hidden shadow-md border border-slate-200 bg-slate-900 ${currentSec.aspectRatio}`}
+              className={`relative rounded-3xl overflow-hidden shadow-xs border border-slate-200 bg-slate-50 flex items-center justify-center ${currentSec.aspectRatio}`}
             >
               {stagedUrl ? (
                 <img
                   src={stagedUrl}
                   alt={currentSec.title}
-                  className="w-full h-full object-cover object-center"
+                  className="w-full h-full object-contain object-center"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'contain',
+                    objectPosition: 'center'
+                  }}
                   referrerPolicy="no-referrer"
                   onError={(e) => {
                     // Fallback visual if URL is broken
@@ -536,32 +543,32 @@ export const SectionMediaManager: React.FC = () => {
                   }}
                 />
               ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 p-6 text-center">
-                  <ImageIcon className="w-12 h-12 mb-2 text-slate-500" />
-                  <p className="text-sm font-bold text-slate-300">No Image Selected</p>
-                  <p className="text-xs text-slate-500 mt-1 max-w-xs">
+                <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 p-6 text-center bg-slate-50">
+                  <ImageIcon className="w-12 h-12 mb-2 text-slate-400" />
+                  <p className="text-sm font-bold text-slate-600">No Image Selected</p>
+                  <p className="text-xs text-slate-400 mt-1 max-w-xs">
                     Upload a custom photo, pick from Media Library, or enter an HTTPS image URL below.
                   </p>
                 </div>
               )}
+            </div>
 
-              {/* Overlay Bar */}
-              <div className="absolute bottom-3 left-3 right-3 px-3 py-2 rounded-xl bg-black/75 backdrop-blur-md text-white text-[11px] font-semibold flex items-center justify-between">
-                <span className="truncate max-w-[280px] sm:max-w-md text-slate-300 font-mono text-[10px]">
-                  {stagedUrl || 'No image source assigned'}
-                </span>
-                <span
-                  className={`shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                    isCurrentSectionDirty
-                      ? 'bg-amber-500 text-white'
-                      : stagedUrl
-                      ? 'bg-teal-600 text-white'
-                      : 'bg-slate-700 text-slate-300'
-                  }`}
-                >
-                  {isCurrentSectionDirty ? 'Unsaved' : stagedUrl ? 'Active in DB' : 'Blank'}
-                </span>
-              </div>
+            {/* Asset Status & URL Bar (Positioned outside preview frame so no part of the image is obscured) */}
+            <div className="px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold flex items-center justify-between gap-3 shadow-2xs">
+              <span className="truncate max-w-[280px] sm:max-w-md text-slate-600 font-mono text-[11px]">
+                {stagedUrl || 'No image source assigned'}
+              </span>
+              <span
+                className={`shrink-0 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                  isCurrentSectionDirty
+                    ? 'bg-amber-500 text-white'
+                    : stagedUrl
+                    ? 'bg-[#007E70] text-white'
+                    : 'bg-slate-200 text-slate-600'
+                }`}
+              >
+                {isCurrentSectionDirty ? 'Unsaved' : stagedUrl ? 'Active in DB' : 'Blank'}
+              </span>
             </div>
 
             {/* Note on persistence */}

@@ -121,27 +121,26 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 : 'প্রতিটি বয়সের জন্য যত্নশীল পরামর্শ, আধুনিক ল্যাব টেস্ট এবং প্রতিটি রোগীর প্রতি গভীর মনোযোগ নিয়ে কেয়ারঅন আপনার পরিবারের পাশে।'}
             </p>
 
-            {/* Family Care Photo Collage / Atmospheric Visual */}
-            <div className="relative rounded-2xl overflow-hidden shadow-lg border border-slate-200 bg-white aspect-[16/9] max-h-72">
+            {/* Family Care Photo / Atmospheric Visual */}
+            <div className="relative rounded-2xl overflow-hidden shadow-md border border-slate-200 bg-slate-50 flex items-center justify-center aspect-[16/9]">
               <img
                 src={
                   settings.sectionMedia?.heroImage ||
                   'https://images.unsplash.com/photo-1576765608535-5f04d1e3f289?auto=format&fit=crop&q=80&w=1200'
                 }
                 alt="Happy family and doctor care consultation at CareOn Medical Clinic"
-                className="w-full h-full object-cover object-center"
+                className="w-full h-full object-contain object-center"
+                style={{ objectFit: 'contain', objectPosition: 'center' }}
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#0B192C]/80 via-transparent to-transparent flex items-end p-4 sm:p-5">
-                <div className="text-white space-y-0.5">
-                  <div className="text-xs font-bold text-teal-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>CareOn Medical Clinic • Contai</span>
-                  </div>
-                  <div className="text-xs font-medium text-slate-200">
-                    {lang === 'en'
-                      ? 'Outpatient Consultations • Diagnostic Pathology • Home Care'
-                      : 'বহির্বিভাগ চেম্বার • প্যাথলজি টেস্ট • হোম সার্ভিস'}
-                  </div>
+              <div className="absolute bottom-3 left-3 px-3 py-1.5 rounded-xl bg-[#0B192C]/85 backdrop-blur-md text-white border border-white/10 shadow-xs pointer-events-none">
+                <div className="text-[11px] font-bold text-teal-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                  <span>CareOn Medical Clinic • Contai</span>
+                </div>
+                <div className="text-[10px] sm:text-[11px] font-medium text-slate-200">
+                  {lang === 'en'
+                    ? 'Outpatient Consultations • Diagnostic Pathology • Home Care'
+                    : 'বহির্বিভাগ চেম্বার • প্যাথলজি টেস্ট • হোম সার্ভিস'}
                 </div>
               </div>
             </div>
