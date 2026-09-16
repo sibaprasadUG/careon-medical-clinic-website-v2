@@ -11,7 +11,6 @@ import {
   Phone,
   Sparkles,
   HeartHandshake,
-  CheckCircle2,
   Building2,
   Home
 } from 'lucide-react';
@@ -132,17 +131,6 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 className="w-full h-full object-contain object-center"
                 style={{ objectFit: 'contain', objectPosition: 'center' }}
               />
-              <div className="absolute bottom-3 left-3 px-3 py-1.5 rounded-xl bg-[#0B192C]/85 backdrop-blur-md text-white border border-white/10 shadow-xs pointer-events-none">
-                <div className="text-[11px] font-bold text-teal-300 uppercase tracking-wider flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-teal-400 shrink-0" />
-                  <span>CareOn Medical Clinic • Contai</span>
-                </div>
-                <div className="text-[10px] sm:text-[11px] font-medium text-slate-200">
-                  {lang === 'en'
-                    ? 'Outpatient Consultations • Diagnostic Pathology • Home Care'
-                    : 'বহির্বিভাগ চেম্বার • প্যাথলজি টেস্ট • হোম সার্ভিস'}
-                </div>
-              </div>
             </div>
 
             {/* 3 Core Trust Badges (Exact match to Reference) */}
