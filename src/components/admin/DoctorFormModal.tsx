@@ -23,6 +23,7 @@ import {
 } from '../../data/doctorManagementConstants';
 import { MediaPickerModal } from './MediaPickerModal';
 import { CareOnDoctorFallback, DoctorPhoto } from '../common/CareOnMedia';
+import { DoctorScheduleForm } from './DoctorScheduleForm';
 import {
   X,
   Plus,
@@ -59,6 +60,7 @@ interface DoctorFormModalProps {
   onSave: (doctorData: Partial<Doctor>) => void;
   onDelete?: (doctor: Doctor) => void;
   initialData?: Partial<Doctor> | null;
+  defaultTab?: FormTab;
 }
 
 type FormTab = 'basic' | 'services' | 'fees' | 'schedule' | 'settings';
@@ -113,12 +115,16 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
   onClose,
   onSave,
   onDelete,
-  initialData
+  initialData,
+  defaultTab
 }) => {
   // Navigation tabs
-  const [activeTab, setActiveTab] = useState<FormTab>('basic');
+  const [activeTab, setActiveTab] = useState<FormTab>(defaultTab || 'basic');
   const [activeScheduleTab, setActiveScheduleTab] = useState<ScheduleSubTab>('weekly');
   const [mobileView, setMobileView] = useState<'form' | 'preview'>('form');
+
+  // Full Custom Schedules state for upgraded recurrence manager
+  const [fullCustomSchedules, setFullCustomSchedules] = useState<DoctorCustomSchedule[]>([]);
 
   // 1. Basic Information
   const [name, setName] = useState<string>('');
@@ -330,6 +336,7 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
         setMonthlySchedules(mon);
         setCustomDates(cust);
       }
+      setFullCustomSchedules(Array.isArray(initialData.customSchedules) ? initialData.customSchedules : []);
 
       // Unavailable exceptions
       if (Array.isArray(initialData.scheduleExceptions)) {
@@ -390,6 +397,7 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
       setMonthlySchedules([]);
       setCustomDates([]);
       setUnavailableExceptions([]);
+      setFullCustomSchedules([]);
 
       setAppointmentDuration(30);
       setBufferTime(0);
@@ -397,9 +405,9 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
       setAppointmentEnabled(true);
     }
     setValidationError(null);
-    setActiveTab('basic');
+    setActiveTab(defaultTab || 'basic');
     setMobileView('form');
-  }, [initialData, isOpen]);
+  }, [initialData, isOpen, defaultTab]);
 
   // Filtered departments for searchable dropdown
   const filteredDepartments = useMemo(() => {
@@ -637,41 +645,48 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
 
     // 3. Construct clean CustomSchedules
     const convertedCustomSchedules: DoctorCustomSchedule[] = [
-      ...alternateSchedules.map((alt) => ({
-        id: alt.id,
-        recurrenceType: 'INTERVAL_DAYS' as const,
-        scheduleType: 'INTERVAL_DAYS' as const,
-        dayOfWeek: alt.day,
-        startDate: alt.startDate,
-        intervalDays: alt.frequency === 'EVERY_2_WEEKS' ? 14 : 7,
-        startTime: alt.startTime,
-        endTime: alt.endTime,
-        chamber: alt.roomNumber || chamberId,
-        status: 'ACTIVE' as const
-      })),
-      ...monthlySchedules.map((mon) => ({
-        id: mon.id,
-        recurrenceType: 'MONTHLY' as const,
-        scheduleType: 'MONTHLY' as const,
-        monthlyOccurrence: mon.occurrence,
-        monthlyDayOfWeek: mon.day,
-        dayOfWeek: mon.day,
-        startTime: mon.startTime,
-        endTime: mon.endTime,
-        chamber: mon.roomNumber || chamberId,
-        status: 'ACTIVE' as const
-      })),
-      ...customDates.map((cd) => ({
-        id: cd.id,
-        recurrenceType: 'SPECIFIC_DATE' as const,
-        scheduleType: 'SPECIFIC_DATE' as const,
-        specificDate: cd.date,
-        title: cd.title,
-        startTime: cd.startTime,
-        endTime: cd.endTime,
-        chamber: cd.roomNumber || chamberId,
-        status: 'ACTIVE' as const
-      }))
+      ...fullCustomSchedules,
+      ...alternateSchedules
+        .filter((alt) => !fullCustomSchedules.some((f) => f.id === alt.id))
+        .map((alt) => ({
+          id: alt.id,
+          recurrenceType: 'INTERVAL_DAYS' as const,
+          scheduleType: 'INTERVAL_DAYS' as const,
+          dayOfWeek: alt.day,
+          startDate: alt.startDate,
+          intervalDays: alt.frequency === 'EVERY_2_WEEKS' ? 14 : 7,
+          startTime: alt.startTime,
+          endTime: alt.endTime,
+          chamber: alt.roomNumber || chamberId,
+          status: 'ACTIVE' as const
+        })),
+      ...monthlySchedules
+        .filter((mon) => !fullCustomSchedules.some((f) => f.id === mon.id))
+        .map((mon) => ({
+          id: mon.id,
+          recurrenceType: 'MONTHLY' as const,
+          scheduleType: 'MONTHLY' as const,
+          monthlyOccurrence: mon.occurrence,
+          monthlyDayOfWeek: mon.day,
+          dayOfWeek: mon.day,
+          startTime: mon.startTime,
+          endTime: mon.endTime,
+          chamber: mon.roomNumber || chamberId,
+          status: 'ACTIVE' as const
+        })),
+      ...customDates
+        .filter((cd) => !fullCustomSchedules.some((f) => f.id === cd.id))
+        .map((cd) => ({
+          id: cd.id,
+          recurrenceType: 'SPECIFIC_DATE' as const,
+          scheduleType: 'SPECIFIC_DATE' as const,
+          specificDate: cd.date,
+          title: cd.title,
+          startTime: cd.startTime,
+          endTime: cd.endTime,
+          chamber: cd.roomNumber || chamberId,
+          status: 'ACTIVE' as const
+        }))
     ];
 
     // 4. Construct clean Exceptions
@@ -1567,64 +1582,37 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
 
               {/* TAB 4: ADVANCED CONSULTATION SCHEDULE */}
               {activeTab === 'schedule' && (
-                <div className="space-y-5 animate-in fade-in duration-150">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2 border-b border-slate-100">
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900">Advanced Visiting Schedule</h3>
-                      <p className="text-xs text-slate-500">
-                        Supports fixed weekly chambers, alternate-week visits, monthly recurrence, and custom dates
-                      </p>
-                    </div>
-
-                    {/* Schedule Sub-mode Selector */}
-                    <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 overflow-x-auto">
-                      <button
-                        type="button"
-                        onClick={() => setActiveScheduleTab('weekly')}
-                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors whitespace-nowrap ${
-                          activeScheduleTab === 'weekly' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
-                        }`}
-                      >
-                        Weekly ({weeklySchedules.length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setActiveScheduleTab('alternate')}
-                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors whitespace-nowrap ${
-                          activeScheduleTab === 'alternate' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
-                        }`}
-                      >
-                        Alternate ({alternateSchedules.length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setActiveScheduleTab('monthly')}
-                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors whitespace-nowrap ${
-                          activeScheduleTab === 'monthly' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
-                        }`}
-                      >
-                        Monthly ({monthlySchedules.length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setActiveScheduleTab('custom')}
-                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors whitespace-nowrap ${
-                          activeScheduleTab === 'custom' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
-                        }`}
-                      >
-                        Dates ({customDates.length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setActiveScheduleTab('unavailable')}
-                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors whitespace-nowrap text-rose-600 ${
-                          activeScheduleTab === 'unavailable' ? 'bg-white shadow-2xs' : ''
-                        }`}
-                      >
-                        Leave ({unavailableExceptions.length})
-                      </button>
-                    </div>
-                  </div>
+                <div className="space-y-6 animate-in fade-in duration-150">
+                  <DoctorScheduleForm
+                    doctor={{
+                      id: initialData?.id,
+                      name: name || initialData?.name,
+                      designation: designation || initialData?.designation,
+                      roomNumber: chamberId
+                    }}
+                    schedules={fullCustomSchedules}
+                    onSaveSchedule={(newSch) => {
+                      setFullCustomSchedules((prev) => {
+                        const idx = prev.findIndex((s) => s.id === newSch.id);
+                        if (idx >= 0) {
+                          const copy = [...prev];
+                          copy[idx] = newSch;
+                          return copy;
+                        }
+                        return [newSch, ...prev];
+                      });
+                    }}
+                    onDeleteSchedule={(schId) => {
+                      setFullCustomSchedules((prev) => prev.filter((s) => s.id !== schId));
+                    }}
+                    onToggleScheduleStatus={(schId) => {
+                      setFullCustomSchedules((prev) =>
+                        prev.map((s) =>
+                          s.id === schId ? { ...s, status: s.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' } : s
+                        )
+                      );
+                    }}
+                  />
 
                   {/* Chamber Location Field */}
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -1641,444 +1629,14 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
                     />
                   </div>
 
-                  {/* SUBTAB 1: FIXED WEEKLY SCHEDULE */}
-                  {activeScheduleTab === 'weekly' && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                          <CalendarDays className="w-4 h-4 text-[#007E70]" />
-                          <span>Fixed Weekly Visiting Slots</span>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={handleAddWeeklySlot}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-[#007E70] rounded-xl text-xs font-bold border border-teal-200 transition-colors cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Weekly Slot</span>
-                        </button>
-                      </div>
 
-                      {weeklySchedules.length === 0 ? (
-                        <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs">
-                          No weekly slots added. Click "Add Weekly Slot" above.
-                        </div>
-                      ) : (
-                        <div className="space-y-2.5">
-                          {weeklySchedules.map((slot, index) => (
-                            <div
-                              key={slot.id}
-                              className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center gap-3"
-                            >
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 text-[11px] font-bold flex items-center justify-center">
-                                  {index + 1}
-                                </span>
-                                <select
-                                  value={slot.day}
-                                  onChange={(e) =>
-                                    handleUpdateWeeklySlot(slot.id, 'day', e.target.value as DayOfWeek)
-                                  }
-                                  className="px-2.5 py-1.5 text-xs font-bold bg-slate-50 rounded-lg border border-slate-200 text-slate-800"
-                                >
-                                  {[
-                                    'Saturday',
-                                    'Sunday',
-                                    'Monday',
-                                    'Tuesday',
-                                    'Wednesday',
-                                    'Thursday',
-                                    'Friday'
-                                  ].map((d) => (
-                                    <option key={d} value={d}>
-                                      {d}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
 
-                              <div className="flex items-center gap-2 flex-1 flex-wrap">
-                                <div className="flex items-center gap-1.5">
-                                  <Clock className="w-3.5 h-3.5 text-slate-400" />
-                                  <input
-                                    type="text"
-                                    value={slot.startTime}
-                                    onChange={(e) =>
-                                      handleUpdateWeeklySlot(slot.id, 'startTime', e.target.value)
-                                    }
-                                    placeholder="10:30 AM"
-                                    className="w-24 px-2 py-1 text-xs bg-slate-50 rounded-lg border border-slate-200 font-semibold"
-                                  />
-                                  <span className="text-slate-400 text-xs">to</span>
-                                  <input
-                                    type="text"
-                                    value={slot.endTime}
-                                    onChange={(e) =>
-                                      handleUpdateWeeklySlot(slot.id, 'endTime', e.target.value)
-                                    }
-                                    placeholder="11:30 AM"
-                                    className="w-24 px-2 py-1 text-xs bg-slate-50 rounded-lg border border-slate-200 font-semibold"
-                                  />
-                                </div>
 
-                                <input
-                                  type="text"
-                                  value={slot.roomNumber}
-                                  onChange={(e) =>
-                                    handleUpdateWeeklySlot(slot.id, 'roomNumber', e.target.value)
-                                  }
-                                  placeholder="Chamber name / room"
-                                  className="flex-1 min-w-[140px] px-2.5 py-1 text-xs bg-slate-50 rounded-lg border border-slate-200"
-                                />
-                              </div>
 
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveWeeklySlot(slot.id)}
-                                className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer self-end sm:self-center"
-                                title="Remove slot"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
 
-                  {/* SUBTAB 2: ALTERNATE WEEK SCHEDULE */}
-                  {activeScheduleTab === 'alternate' && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                            <CalendarRange className="w-4 h-4 text-indigo-600" />
-                            <span>Alternate-Week Consultation Rules</span>
-                          </span>
-                          <p className="text-[11px] text-slate-500">
-                            For consultants who visit every 2 weeks or specific weeks of the month
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleAddAlternateSchedule}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-200 transition-colors cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Alternate Rule</span>
-                        </button>
-                      </div>
 
-                      {alternateSchedules.length === 0 ? (
-                        <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs">
-                          No alternate week rules set. Click "Add Alternate Rule" to configure.
-                        </div>
-                      ) : (
-                        <div className="space-y-2.5">
-                          {alternateSchedules.map((alt) => (
-                            <div
-                              key={alt.id}
-                              className="p-3.5 bg-white rounded-xl border border-indigo-100 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center gap-3"
-                            >
-                              <div className="flex items-center gap-2">
-                                <select
-                                  value={alt.frequency}
-                                  onChange={(e) =>
-                                    setAlternateSchedules((prev) =>
-                                      prev.map((a) =>
-                                        a.id === alt.id ? { ...a, frequency: e.target.value as any } : a
-                                      )
-                                    )
-                                  }
-                                  className="px-2.5 py-1 text-xs font-bold bg-indigo-50 text-indigo-900 rounded-lg border border-indigo-200"
-                                >
-                                  <option value="EVERY_2_WEEKS">Every 2 Weeks</option>
-                                  <option value="WEEKS_1_3">Week 1 & Week 3</option>
-                                  <option value="WEEKS_2_4">Week 2 & Week 4</option>
-                                </select>
-
-                                <select
-                                  value={alt.day}
-                                  onChange={(e) =>
-                                    setAlternateSchedules((prev) =>
-                                      prev.map((a) =>
-                                        a.id === alt.id ? { ...a, day: e.target.value as DayOfWeek } : a
-                                      )
-                                    )
-                                  }
-                                  className="px-2.5 py-1 text-xs font-semibold bg-slate-50 rounded-lg border border-slate-200"
-                                >
-                                  {['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(
-                                    (d) => (
-                                      <option key={d} value={d}>
-                                        {d}
-                                      </option>
-                                    )
-                                  )}
-                                </select>
-                              </div>
-
-                              <div className="flex items-center gap-2 flex-1 flex-wrap">
-                                <input
-                                  type="date"
-                                  value={alt.startDate}
-                                  onChange={(e) =>
-                                    setAlternateSchedules((prev) =>
-                                      prev.map((a) => (a.id === alt.id ? { ...a, startDate: e.target.value } : a))
-                                    )
-                                  }
-                                  className="px-2 py-1 text-xs bg-slate-50 rounded-lg border border-slate-200"
-                                />
-                                <div className="flex items-center gap-1">
-                                  <input
-                                    type="text"
-                                    value={alt.startTime}
-                                    onChange={(e) =>
-                                      setAlternateSchedules((prev) =>
-                                        prev.map((a) => (a.id === alt.id ? { ...a, startTime: e.target.value } : a))
-                                      )
-                                    }
-                                    className="w-20 px-2 py-1 text-xs bg-slate-50 rounded-lg border border-slate-200 font-semibold"
-                                  />
-                                  <span className="text-slate-400 text-xs">–</span>
-                                  <input
-                                    type="text"
-                                    value={alt.endTime}
-                                    onChange={(e) =>
-                                      setAlternateSchedules((prev) =>
-                                        prev.map((a) => (a.id === alt.id ? { ...a, endTime: e.target.value } : a))
-                                      )
-                                    }
-                                    className="w-20 px-2 py-1 text-xs bg-slate-50 rounded-lg border border-slate-200 font-semibold"
-                                  />
-                                </div>
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveAlternateSchedule(alt.id)}
-                                className="text-slate-400 hover:text-rose-600 p-1.5"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* SUBTAB 3: MONTHLY PATTERN */}
-                  {activeScheduleTab === 'monthly' && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                            <Calendar className="w-4 h-4 text-purple-600" />
-                            <span>Monthly Occurrence Rules</span>
-                          </span>
-                          <p className="text-[11px] text-slate-500">
-                            e.g. "Every 2nd Saturday 10:30 AM – 11:30 AM" or "Last Friday of month"
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleAddMonthlySchedule}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl text-xs font-bold border border-purple-200 transition-colors cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Monthly Pattern</span>
-                        </button>
-                      </div>
-
-                      {monthlySchedules.length === 0 ? (
-                        <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs">
-                          No monthly patterns configured.
-                        </div>
-                      ) : (
-                        <div className="space-y-2.5">
-                          {monthlySchedules.map((mon) => (
-                            <div
-                              key={mon.id}
-                              className="p-3.5 bg-white rounded-xl border border-purple-100 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center gap-3"
-                            >
-                              <div className="flex items-center gap-2">
-                                <select
-                                  value={mon.occurrence}
-                                  onChange={(e) =>
-                                    setMonthlySchedules((prev) =>
-                                      prev.map((m) =>
-                                        m.id === mon.id ? { ...m, occurrence: e.target.value as any } : m
-                                      )
-                                    )
-                                  }
-                                  className="px-2.5 py-1 text-xs font-bold bg-purple-50 text-purple-900 rounded-lg border border-purple-200"
-                                >
-                                  <option value="FIRST">1st</option>
-                                  <option value="SECOND">2nd</option>
-                                  <option value="THIRD">3rd</option>
-                                  <option value="FOURTH">4th</option>
-                                  <option value="LAST">Last</option>
-                                </select>
-
-                                <select
-                                  value={mon.day}
-                                  onChange={(e) =>
-                                    setMonthlySchedules((prev) =>
-                                      prev.map((m) =>
-                                        m.id === mon.id ? { ...m, day: e.target.value as DayOfWeek } : m
-                                      )
-                                    )
-                                  }
-                                  className="px-2.5 py-1 text-xs font-semibold bg-slate-50 rounded-lg border border-slate-200"
-                                >
-                                  {['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(
-                                    (d) => (
-                                      <option key={d} value={d}>
-                                        {d}
-                                      </option>
-                                    )
-                                  )}
-                                </select>
-                              </div>
-
-                              <div className="flex items-center gap-2 flex-1">
-                                <input
-                                  type="text"
-                                  value={mon.startTime}
-                                  onChange={(e) =>
-                                    setMonthlySchedules((prev) =>
-                                      prev.map((m) => (m.id === mon.id ? { ...m, startTime: e.target.value } : m))
-                                    )
-                                  }
-                                  className="w-20 px-2 py-1 text-xs bg-slate-50 rounded-lg border border-slate-200 font-semibold"
-                                />
-                                <span className="text-slate-400 text-xs">–</span>
-                                <input
-                                  type="text"
-                                  value={mon.endTime}
-                                  onChange={(e) =>
-                                    setMonthlySchedules((prev) =>
-                                      prev.map((m) => (m.id === mon.id ? { ...m, endTime: e.target.value } : m))
-                                    )
-                                  }
-                                  className="w-20 px-2 py-1 text-xs bg-slate-50 rounded-lg border border-slate-200 font-semibold"
-                                />
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveMonthlySchedule(mon.id)}
-                                className="text-slate-400 hover:text-rose-600 p-1.5"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* SUBTAB 4: CUSTOM SPECIFIC DATES */}
-                  {activeScheduleTab === 'custom' && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                            <Sparkles className="w-4 h-4 text-amber-500" />
-                            <span>Specific Visiting Dates / Special Chambers</span>
-                          </span>
-                          <p className="text-[11px] text-slate-500">
-                            Single exceptional dates for visiting specialists, health camps, or replacement chambers
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleAddCustomDate}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-xl text-xs font-bold border border-amber-200 transition-colors cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Date</span>
-                        </button>
-                      </div>
-
-                      {customDates.length === 0 ? (
-                        <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs">
-                          No specific custom dates scheduled.
-                        </div>
-                      ) : (
-                        <div className="space-y-2.5">
-                          {customDates.map((cd) => (
-                            <div
-                              key={cd.id}
-                              className="p-3.5 bg-white rounded-xl border border-amber-200 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center gap-3"
-                            >
-                              <input
-                                type="date"
-                                value={cd.date}
-                                onChange={(e) =>
-                                  setCustomDates((prev) =>
-                                    prev.map((c) => (c.id === cd.id ? { ...c, date: e.target.value } : c))
-                                  )
-                                }
-                                className="px-2.5 py-1 text-xs bg-amber-50 rounded-lg border border-amber-200 font-bold text-amber-900"
-                              />
-
-                              <input
-                                type="text"
-                                value={cd.title}
-                                onChange={(e) =>
-                                  setCustomDates((prev) =>
-                                    prev.map((c) => (c.id === cd.id ? { ...c, title: e.target.value } : c))
-                                  )
-                                }
-                                placeholder="Purpose (e.g. Special Camp)"
-                                className="flex-1 px-2.5 py-1 text-xs bg-slate-50 rounded-lg border border-slate-200 font-medium"
-                              />
-
-                              <div className="flex items-center gap-1">
-                                <input
-                                  type="text"
-                                  value={cd.startTime}
-                                  onChange={(e) =>
-                                    setCustomDates((prev) =>
-                                      prev.map((c) => (c.id === cd.id ? { ...c, startTime: e.target.value } : c))
-                                    )
-                                  }
-                                  className="w-20 px-2 py-1 text-xs bg-slate-50 rounded-lg border border-slate-200 font-semibold"
-                                />
-                                <span className="text-slate-400 text-xs">–</span>
-                                <input
-                                  type="text"
-                                  value={cd.endTime}
-                                  onChange={(e) =>
-                                    setCustomDates((prev) =>
-                                      prev.map((c) => (c.id === cd.id ? { ...c, endTime: e.target.value } : c))
-                                    )
-                                  }
-                                  className="w-20 px-2 py-1 text-xs bg-slate-50 rounded-lg border border-slate-200 font-semibold"
-                                />
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveCustomDate(cd.id)}
-                                className="text-slate-400 hover:text-rose-600 p-1.5"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* SUBTAB 5: TEMPORARILY UNAVAILABLE / LEAVE */}
-                  {activeScheduleTab === 'unavailable' && (
-                    <div className="space-y-3">
+                  {/* DOCTOR LEAVE & VACATION OVERRIDES */}
+                  <div className="space-y-3 pt-4 border-t border-slate-200">
                       <div className="flex items-center justify-between">
                         <div>
                           <span className="text-xs font-bold text-rose-700 flex items-center gap-1.5">
@@ -2187,70 +1745,6 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
                         </div>
                       )}
                     </div>
-                  )}
-
-                  {/* SCHEDULE VISUALIZATION SUMMARY CARD */}
-                  <div className="mt-4 p-4 rounded-2xl bg-linear-to-br from-slate-50 to-teal-50/40 border border-slate-200 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                        <Activity className="w-3.5 h-3.5 text-[#007E70]" />
-                        <span>Aggregated Schedule Summary</span>
-                      </span>
-                      <span className="text-[10px] text-[#007E70] font-mono">Live Synchronization</span>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      {weeklySchedules.map((w) => (
-                        <span
-                          key={w.id}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium"
-                        >
-                          <Clock className="w-3 h-3 text-emerald-600" />
-                          <span className="font-bold">{w.day}:</span> {w.startTime} – {w.endTime}
-                        </span>
-                      ))}
-
-                      {alternateSchedules.map((a) => (
-                        <span
-                          key={a.id}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-200 font-medium"
-                        >
-                          <CalendarRange className="w-3 h-3 text-indigo-600" />
-                          <span>Alt ({a.day}): {a.startTime} – {a.endTime}</span>
-                        </span>
-                      ))}
-
-                      {monthlySchedules.map((m) => (
-                        <span
-                          key={m.id}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-50 text-purple-800 border border-purple-200 font-medium"
-                        >
-                          <Calendar className="w-3 h-3 text-purple-600" />
-                          <span>{m.occurrence} {m.day}: {m.startTime} – {m.endTime}</span>
-                        </span>
-                      ))}
-
-                      {customDates.map((c) => (
-                        <span
-                          key={c.id}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 font-medium"
-                        >
-                          <Sparkles className="w-3 h-3 text-amber-600" />
-                          <span>{c.date}: {c.startTime} – {c.endTime} ({c.title})</span>
-                        </span>
-                      ))}
-
-                      {unavailableExceptions.map((u) => (
-                        <span
-                          key={u.id}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 font-medium"
-                        >
-                          <Ban className="w-3 h-3 text-rose-600" />
-                          <span>Leave: {u.startDate} to {u.endDate}</span>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
                 </div>
               )}
 

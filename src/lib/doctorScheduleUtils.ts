@@ -225,17 +225,21 @@ export function evaluateDoctorAvailability(
 
   // 2. Check Custom / Date-based Schedules (Priority 2)
   if (doctor.customSchedules && doctor.customSchedules.length > 0) {
-    const activeCustom = doctor.customSchedules.filter((cs) => cs.status === 'ACTIVE');
+    const activeCustom = doctor.customSchedules.filter(
+      (cs) => cs.status !== 'INACTIVE' && cs.status !== 'CANCELLED'
+    );
     for (const schedule of activeCustom) {
-      // Check effective dates if set
-      if (schedule.effectiveFrom && dateStr < schedule.effectiveFrom) continue;
-      if (schedule.effectiveUntil && dateStr > schedule.effectiveUntil) continue;
+      // Check effective date boundaries if set
+      const startBound = schedule.startDate || schedule.effectiveFrom;
+      const endBound = schedule.endDate || schedule.effectiveUntil;
+      if (startBound && dateStr < startBound) continue;
+      if (endBound && dateStr > endBound) continue;
 
       let isMatch = false;
       const type = schedule.scheduleType || schedule.recurrenceType;
 
-      if (type === 'SPECIFIC_DATE' || type === 'SPECIAL_CHAMBER') {
-        if (schedule.specificDate === dateStr) {
+      if (type === 'ONE_TIME' || type === 'SPECIFIC_DATE' || type === 'SPECIAL_CHAMBER') {
+        if (schedule.sessionDate === dateStr || schedule.specificDate === dateStr) {
           isMatch = true;
         } else if (schedule.specificDates && schedule.specificDates.includes(dateStr)) {
           isMatch = true;
@@ -243,20 +247,38 @@ export function evaluateDoctorAvailability(
       } else if (type === 'SPECIFIC_DATES') {
         if (schedule.specificDates && schedule.specificDates.includes(dateStr)) {
           isMatch = true;
-        } else if (schedule.specificDate === dateStr) {
+        } else if (schedule.specificDate === dateStr || schedule.sessionDate === dateStr) {
           isMatch = true;
         }
+      } else if (type === 'WEEKLY') {
+        const targetDay = schedule.dayOfWeek || schedule.monthlyDayOfWeek;
+        if (targetDay && dayOfWeek === targetDay) {
+          isMatch = true;
+        }
+      } else if (type === 'ALTERNATE_WEEK') {
+        // Generates every 14 days from starting date
+        const start = schedule.startDate || schedule.effectiveFrom;
+        if (start && checkIntervalMatch(dateStr, start, 14)) {
+          const targetDay = schedule.dayOfWeek || getDayOfWeekFromDate(start);
+          if (dayOfWeek === targetDay) {
+            isMatch = true;
+          }
+        }
       } else if (type === 'EVERY_15_DAYS' || type === 'INTERVAL_DAYS') {
+        // Generates every 15 calendar days from starting date
         const start = schedule.startDate || schedule.effectiveFrom;
         const interval = schedule.intervalDays || 15;
         if (start && checkIntervalMatch(dateStr, start, interval)) {
           isMatch = true;
         }
-      } else if (type === 'MONTHLY') {
+      } else if (type === 'ONCE_A_MONTH' || type === 'MONTHLY') {
+        // Specific ordinal weekday in the month, e.g. 2nd Saturday or 1st Monday
+        const occurrence = schedule.weekOfMonth || schedule.monthlyOccurrence;
+        const targetDay = schedule.dayOfWeek || schedule.monthlyDayOfWeek;
         if (
-          schedule.monthlyOccurrence &&
-          schedule.monthlyDayOfWeek &&
-          checkMonthlyOccurrence(dateStr, schedule.monthlyOccurrence, schedule.monthlyDayOfWeek)
+          occurrence &&
+          targetDay &&
+          checkMonthlyOccurrence(dateStr, occurrence, targetDay)
         ) {
           isMatch = true;
         } else if (schedule.monthlyDaysOfMonth && schedule.monthlyDaysOfMonth.length > 0) {
@@ -265,14 +287,15 @@ export function evaluateDoctorAvailability(
             isMatch = true;
           }
         }
+      } else if (type === 'ALTERNATE_SATURDAY') {
+        // Dedicated simple option: every other Saturday (14-day interval, Saturdays only)
+        const start = schedule.startingSaturday || schedule.startDate || schedule.effectiveFrom;
+        if (start && checkIntervalMatch(dateStr, start, 14) && dayOfWeek === 'Saturday') {
+          isMatch = true;
+        }
       } else if (type === 'MONTHLY_SPECIFIC_DAYS') {
         const dayNum = Number(dateStr.split('-')[2]);
         if (schedule.monthlyDaysOfMonth && schedule.monthlyDaysOfMonth.includes(dayNum)) {
-          isMatch = true;
-        }
-      } else if (type === 'WEEKLY') {
-        const targetDay = schedule.dayOfWeek || schedule.monthlyDayOfWeek;
-        if (targetDay && dayOfWeek === targetDay) {
           isMatch = true;
         }
       }
@@ -289,6 +312,18 @@ export function evaluateDoctorAvailability(
           location: schedule.location || schedule.chamber || doctor.roomNumber || 'Chamber 101'
         };
       }
+    }
+
+    // Section 15 Safety Rule: If a doctor has active custom recurrence schedules (e.g. Once a Month),
+    // do NOT fall back to generic weekly consultationDays (which would falsely show them available every week).
+    const hasActiveExplicitWeekly =
+      doctor.weeklySchedule && doctor.weeklySchedule.some((s) => s.isActive);
+    if (!hasActiveExplicitWeekly) {
+      return {
+        isAvailable: false,
+        source: 'UNAVAILABLE',
+        reason: `Doctor does not hold chamber on ${dayOfWeek}s. Please check doctor's periodic chamber dates.`
+      };
     }
   }
 
@@ -329,6 +364,289 @@ export function evaluateDoctorAvailability(
     isAvailable: false,
     source: 'UNAVAILABLE',
     reason: `Doctor does not hold chamber on ${dayOfWeek}s.`
+  };
+}
+
+/**
+ * Generate upcoming chamber session dates for a schedule configuration
+ * Generation Range: 3 Months, 6 Months (default), or 12 Months
+ */
+export function generateScheduleSessionDates(
+  config: Partial<DoctorCustomSchedule>,
+  rangeMonths: 3 | 6 | 12 = 6,
+  maxCount: number = 24
+): string[] {
+  const type = config.scheduleType || config.recurrenceType || 'WEEKLY';
+  const dates: string[] = [];
+
+  const addDays = (baseDateStr: string, days: number): string => {
+    const parts = baseDateStr.split('-').map(Number);
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    d.setDate(d.getDate() + days);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  const getTodayStr = (): string => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  };
+
+  const refStartStr =
+    config.startDate ||
+    config.startingSaturday ||
+    config.sessionDate ||
+    config.specificDate ||
+    getTodayStr();
+
+  const startParts = refStartStr.split('-').map(Number);
+  const startDt = new Date(startParts[0], startParts[1] - 1, startParts[2]);
+
+  const endDt = new Date(startDt);
+  endDt.setMonth(endDt.getMonth() + (rangeMonths || 6));
+  const endDateStr = `${endDt.getFullYear()}-${String(endDt.getMonth() + 1).padStart(2, '0')}-${String(endDt.getDate()).padStart(2, '0')}`;
+
+  // 1. One Time / Specific Date
+  if (type === 'ONE_TIME' || type === 'SPECIFIC_DATE') {
+    const d = config.sessionDate || config.specificDate;
+    if (d) dates.push(d);
+    return dates;
+  }
+
+  // 2. Weekly
+  if (type === 'WEEKLY') {
+    const targetDay = config.dayOfWeek || 'Saturday';
+    let cur = refStartStr;
+    while (cur <= endDateStr && dates.length < maxCount) {
+      if (getDayOfWeekFromDate(cur) === targetDay) {
+        dates.push(cur);
+      }
+      cur = addDays(cur, 1);
+    }
+    return dates;
+  }
+
+  // 3. Alternate Week (Every 14 days)
+  if (type === 'ALTERNATE_WEEK') {
+    const start = config.startDate || refStartStr;
+    let cur = start;
+    while (cur <= endDateStr && dates.length < maxCount) {
+      dates.push(cur);
+      cur = addDays(cur, 14); // Exactly 14 days
+    }
+    return dates;
+  }
+
+  // 4. Every 15 Days (Every 15 calendar days)
+  if (type === 'EVERY_15_DAYS') {
+    const start = config.startDate || refStartStr;
+    let cur = start;
+    while (cur <= endDateStr && dates.length < maxCount) {
+      dates.push(cur);
+      cur = addDays(cur, 15); // Exactly 15 calendar days
+    }
+    return dates;
+  }
+
+  // 5. Alternate Saturday (Dedicated simple option: every 14 days on Saturdays)
+  if (type === 'ALTERNATE_SATURDAY') {
+    const start = config.startingSaturday || config.startDate || refStartStr;
+    let cur = start;
+    while (cur <= endDateStr && dates.length < maxCount) {
+      dates.push(cur);
+      cur = addDays(cur, 14); // 14 days
+    }
+    return dates;
+  }
+
+  // 6. Once a Month (e.g. 2nd Saturday or 1st Monday of every month)
+  if (type === 'ONCE_A_MONTH' || type === 'MONTHLY') {
+    const occurrence = config.weekOfMonth || config.monthlyOccurrence || 'SECOND';
+    const targetDay = config.dayOfWeek || config.monthlyDayOfWeek || 'Saturday';
+
+    let iterYear = startDt.getFullYear();
+    let iterMonth = startDt.getMonth(); // 0-indexed
+    const targetDayIndex = [
+      'Sunday',
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday'
+    ].indexOf(targetDay);
+
+    while (dates.length < maxCount) {
+      const checkDt = new Date(iterYear, iterMonth, 1);
+      if (checkDt > endDt) break;
+
+      let matchDay: number | null = null;
+      let count = 0;
+      let lastMatch = 1;
+
+      for (let day = 1; day <= 31; day++) {
+        const testD = new Date(iterYear, iterMonth, day);
+        if (testD.getMonth() !== iterMonth) break;
+        if (testD.getDay() === targetDayIndex) {
+          count++;
+          lastMatch = day;
+          if (occurrence === 'FIRST' && count === 1) {
+            matchDay = day;
+            break;
+          }
+          if (occurrence === 'SECOND' && count === 2) {
+            matchDay = day;
+            break;
+          }
+          if (occurrence === 'THIRD' && count === 3) {
+            matchDay = day;
+            break;
+          }
+          if (occurrence === 'FOURTH' && count === 4) {
+            matchDay = day;
+            break;
+          }
+        }
+      }
+
+      if (occurrence === 'LAST') {
+        matchDay = lastMatch;
+      }
+
+      if (matchDay !== null) {
+        const dateStr = `${iterYear}-${String(iterMonth + 1).padStart(2, '0')}-${String(matchDay).padStart(2, '0')}`;
+        if (dateStr >= refStartStr && dateStr <= endDateStr) {
+          dates.push(dateStr);
+        }
+      }
+
+      iterMonth++;
+      if (iterMonth > 11) {
+        iterMonth = 0;
+        iterYear++;
+      }
+    }
+    return dates;
+  }
+
+  return dates;
+}
+
+/**
+ * Format Human-Readable Schedule Pattern
+ */
+export function formatSchedulePattern(config: Partial<DoctorCustomSchedule>): string {
+  const type = config.scheduleType || config.recurrenceType || 'WEEKLY';
+
+  if (type === 'ONE_TIME' || type === 'SPECIFIC_DATE') {
+    const d = config.sessionDate || config.specificDate;
+    return d ? `One Time (${formatScheduleDate(d)})` : 'One Time / Specific Date';
+  }
+
+  if (type === 'WEEKLY') {
+    return `Every ${config.dayOfWeek || 'Saturday'}`;
+  }
+
+  if (type === 'ALTERNATE_WEEK') {
+    const day = config.dayOfWeek || 'Scheduled Day';
+    return `Alternate Week (Every 14 Days) — ${day}`;
+  }
+
+  if (type === 'EVERY_15_DAYS') {
+    return 'Every 15 Days (Calendar Days)';
+  }
+
+  if (type === 'ONCE_A_MONTH' || type === 'MONTHLY') {
+    const occMap: Record<string, string> = {
+      FIRST: '1st',
+      SECOND: '2nd',
+      THIRD: '3rd',
+      FOURTH: '4th',
+      LAST: 'Last'
+    };
+    const occ = occMap[config.weekOfMonth || config.monthlyOccurrence || 'SECOND'] || '2nd';
+    const day = config.dayOfWeek || config.monthlyDayOfWeek || 'Saturday';
+    return `Every ${occ} ${day} of every month`;
+  }
+
+  if (type === 'ALTERNATE_SATURDAY') {
+    return 'Alternate Saturday (Every 2 weeks)';
+  }
+
+  return 'Scheduled Chamber';
+}
+
+/**
+ * Get Next Upcoming Session for a Doctor's custom schedule
+ */
+export function getNextUpcomingSessionDate(
+  config: Partial<DoctorCustomSchedule>,
+  fromToday: boolean = true
+): string | null {
+  const dates = generateScheduleSessionDates(config, 6, 12);
+  if (dates.length === 0) return null;
+  if (!fromToday) return dates[0];
+  const todayStr = new Date().toISOString().split('T')[0];
+  const future = dates.filter((d) => d >= todayStr);
+  return future.length > 0 ? future[0] : dates[0];
+}
+
+/**
+ * Get Compact Schedule Summary for Doctor Profile (Requirement 17)
+ * Example outputs:
+ *  - Chamber: Every 2nd Saturday • 10:30 AM – 11:30 AM
+ *  - Chamber: Every Saturday • 10:30 AM – 11:30 AM
+ *  - Chamber: Every 15 Days • 10:30 AM – 11:30 AM
+ */
+export function getDoctorCompactScheduleSummary(doctor: Doctor): {
+  chamberSummary: string;
+  consultationFeeText: string;
+} {
+  const fee = doctor.consultationFee ?? doctor.fees?.newPatient;
+  const feeText = fee !== undefined ? `₹${fee}` : 'By Appointment';
+
+  // 1. Check if doctor has active custom schedules
+  if (doctor.customSchedules && doctor.customSchedules.length > 0) {
+    const activeCustom = doctor.customSchedules.filter(
+      (cs) => cs.status !== 'INACTIVE' && cs.status !== 'CANCELLED'
+    );
+    if (activeCustom.length > 0) {
+      const primary = activeCustom[0];
+      const patternText = formatSchedulePattern(primary);
+      const timeStr =
+        primary.startTime && primary.endTime
+          ? `${primary.startTime} – ${primary.endTime}`
+          : doctor.consultationTime || '10:30 AM – 11:30 AM';
+      return {
+        chamberSummary: `${patternText} • ${timeStr}`,
+        consultationFeeText: feeText
+      };
+    }
+  }
+
+  // 2. Check weekly schedule
+  if (doctor.weeklySchedule && doctor.weeklySchedule.length > 0) {
+    const activeSlots = doctor.weeklySchedule.filter((s) => s.isActive);
+    if (activeSlots.length > 0) {
+      const days = activeSlots.map((s) => DAY_SHORT_MAP[s.day]).join(', ');
+      const timeStr = `${activeSlots[0].startTime} – ${activeSlots[0].endTime}`;
+      return {
+        chamberSummary: `Every ${days} • ${timeStr}`,
+        consultationFeeText: feeText
+      };
+    }
+  }
+
+  // 3. Fallback to consultationDays
+  if (doctor.consultationDays && doctor.consultationDays.length > 0) {
+    return {
+      chamberSummary: `${doctor.consultationDays.join(', ')} • ${doctor.consultationTime || '10:30 AM – 11:30 AM'}`,
+      consultationFeeText: feeText
+    };
+  }
+
+  return {
+    chamberSummary: 'Chamber: By Appointment',
+    consultationFeeText: feeText
   };
 }
 

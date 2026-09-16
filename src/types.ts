@@ -131,18 +131,23 @@ export interface DoctorWeeklyScheduleSlot {
   day: DayOfWeek;
   startTime: string;
   endTime: string;
+  consultationDuration?: number;
   roomNumber?: string;
   location?: string;
   isActive: boolean;
 }
 
 export type ScheduleRecurrenceType =
-  | 'WEEKLY'
-  | 'EVERY_15_DAYS'
-  | 'INTERVAL_DAYS'
-  | 'MONTHLY'
-  | 'MONTHLY_SPECIFIC_DAYS'
+  | 'ONE_TIME'
   | 'SPECIFIC_DATE'
+  | 'WEEKLY'
+  | 'ALTERNATE_WEEK'
+  | 'EVERY_15_DAYS'
+  | 'ONCE_A_MONTH'
+  | 'MONTHLY'
+  | 'ALTERNATE_SATURDAY'
+  | 'INTERVAL_DAYS'
+  | 'MONTHLY_SPECIFIC_DAYS'
   | 'SPECIFIC_DATES'
   | 'SPECIAL_CHAMBER';
 
@@ -150,13 +155,20 @@ export type MonthlyOccurrence = 'FIRST' | 'SECOND' | 'THIRD' | 'FOURTH' | 'LAST'
 
 export interface DoctorCustomSchedule {
   id: string;
+  doctorId?: string;
+  doctorName?: string;
   title?: string;
   scheduleType?: ScheduleRecurrenceType;
   recurrenceType: ScheduleRecurrenceType;
+  sessionDate?: string; // 'YYYY-MM-DD' for one-time
   specificDate?: string; // 'YYYY-MM-DD'
   specificDates?: string[]; // 'YYYY-MM-DD'
-  startDate?: string; // 'YYYY-MM-DD' for interval
-  intervalDays?: number; // e.g. 15
+  startDate?: string; // 'YYYY-MM-DD' for interval or alternate week
+  startingSaturday?: string; // 'YYYY-MM-DD' for alternate Saturday
+  endDate?: string; // 'YYYY-MM-DD'
+  generationRangeMonths?: 3 | 6 | 12; // 3, 6, or 12 months
+  intervalDays?: number; // 14 for Alternate Week, 15 for Every 15 Days
+  weekOfMonth?: MonthlyOccurrence;
   monthlyRule?: 'NTH_DAY_OF_WEEK' | 'DAY_OF_MONTH';
   monthlyOccurrence?: MonthlyOccurrence;
   monthlyDayOfWeek?: DayOfWeek;
@@ -166,12 +178,15 @@ export interface DoctorCustomSchedule {
   effectiveUntil?: string;
   startTime: string;
   endTime: string;
+  consultationDuration?: number; // duration in minutes, e.g. 15, 20, 30, 45, 60
   location?: string;
   roomNumber?: string;
   chamber?: string;
   status: 'ACTIVE' | 'INACTIVE' | 'CANCELLED';
   note?: string;
   notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface DoctorScheduleException {
