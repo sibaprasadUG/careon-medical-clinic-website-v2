@@ -45,7 +45,7 @@ export const PublicHeader: React.FC<PublicHeaderProps> = ({
   const brandLogoUrl =
     settings?.brand?.logoUrl ||
     settings?.logoUrl ||
-    'https://tgwthqwivtmarjsslxxn.supabase.co/storage/v1/object/public/careon-media/assets/doctor/asset-1789066744779-h4uevf-careon_logo_png.png';
+    '/careon_logo.png';
 
   useEffect(() => {
     const handleScroll = () => {
