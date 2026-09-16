@@ -243,7 +243,7 @@ export const DEFAULT_WEBSITE_SETTINGS: WebsiteSettings = {
   address: 'Kumarpur (Amarttya Palli), Contai, Purba Medinipur, 721401',
   locationName: 'Contai, Purba Medinipur',
   mapLink: '',
-  openingHours: 'Mon – Sat: 09:00 AM – 07:00 PM | Sunday: Closed',
+  openingHours: 'Monday – Sunday: 08:00 AM – 07:00 PM',
   announcement: '',
   announcementActive: false,
   socialLinks: {

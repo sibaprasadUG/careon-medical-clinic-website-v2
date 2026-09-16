@@ -34,7 +34,7 @@ export const CareOnLogo: React.FC<CareOnLogoProps> = ({
     activeSettings?.brand?.logoUrl ||
     activeSettings?.logoUrl ||
     (activeSettings?.logoAssetId ? MediaStorageService.getPublicUrl(activeSettings.logoAssetId) : '') ||
-    '/careon_logo.png';
+    'https://tgwthqwivtmarjsslxxn.supabase.co/storage/v1/object/public/careon-media/assets/doctor/asset-1789066744779-h4uevf-careon_logo_png.png';
 
   const logoAlt =
     activeSettings?.brand?.logoAlt ||
@@ -133,7 +133,7 @@ export const CareOnLogo: React.FC<CareOnLogoProps> = ({
       <div className="flex flex-col justify-center min-w-0">
         <div className="flex items-center gap-1.5 leading-tight">
           <span className={`font-extrabold tracking-tight ${titleSizes[size]} ${textColors[activeVariant].title}`}>
-            Care<span className="text-[#007E70]">On</span>
+            Care<span className="text-red-600">On</span>
           </span>
           <span className="text-[10px] sm:text-xs font-semibold px-1.5 py-0.2 rounded bg-teal-50 text-[#007E70] border border-teal-100 uppercase tracking-widest hidden sm:inline-block">
             Clinic

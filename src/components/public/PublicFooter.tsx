@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Heart,
   Phone,
@@ -32,6 +32,12 @@ export const PublicFooter: React.FC<PublicFooterProps> = ({
   onOpenBooking,
   settings
 }) => {
+  const [logoFailed, setLogoFailed] = useState<boolean>(false);
+  const brandLogoUrl =
+    settings?.brand?.logoUrl ||
+    settings?.logoUrl ||
+    'https://tgwthqwivtmarjsslxxn.supabase.co/storage/v1/object/public/careon-media/assets/doctor/asset-1789066744779-h4uevf-careon_logo_png.png';
+
   const receptionPhone = '9933520248';
   const whatsappNumber = '9933335131';
   const helplinePhone = '9933335131';
@@ -65,12 +71,25 @@ export const PublicFooter: React.FC<PublicFooterProps> = ({
           {/* Col 1: Brand & Socials */}
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-500 to-[#007E70] flex items-center justify-center text-white shadow-md">
-                <Heart className="w-5 h-5 text-white fill-white/30" />
+              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-white flex items-center justify-center p-1 shadow-sm border border-slate-700/60 overflow-hidden shrink-0">
+                {!logoFailed && brandLogoUrl ? (
+                  <img
+                    src={brandLogoUrl}
+                    alt={settings?.brand?.logoAlt || settings?.logoAlt || 'CareOn Medical Clinic'}
+                    className="w-full h-full object-contain"
+                    onError={() => setLogoFailed(true)}
+                    loading="eager"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-full h-full rounded-lg bg-gradient-to-br from-teal-500 to-[#007E70] flex items-center justify-center text-white">
+                    <Heart className="w-5 h-5 text-white fill-white/30" />
+                  </div>
+                )}
               </div>
               <div>
                 <div className="text-lg font-extrabold text-white tracking-tight leading-tight">
-                  Care<span className="text-teal-400">On</span>
+                  Care<span className="text-red-500">On</span>
                   <span className="text-xs font-semibold text-slate-400 ml-1.5 font-sans-ui">
                     Clinic
                   </span>
@@ -241,7 +260,7 @@ export const PublicFooter: React.FC<PublicFooterProps> = ({
                 </a>
 
                 <div className="text-[11px] text-teal-300 font-semibold text-center pt-0.5">
-                  {lang === 'en' ? 'Mon – Sat: 09:00 AM – 07:00 PM' : 'সোম – শনি: সকাল ৯টা – সন্ধ্যা ৭টা'}
+                  {lang === 'en' ? 'Monday – Sunday: 08:00 AM – 07:00 PM' : 'সোম – রবি: সকাল ০৮:০০ – সন্ধ্যা ০৭:০০'}
                 </div>
               </div>
             </div>

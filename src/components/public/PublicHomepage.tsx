@@ -1,8 +1,5 @@
 import React from 'react';
 import { HeroSection } from './HeroSection';
-import { QuickActionCards } from './QuickActionCards';
-import { ServicesAndDoctorsSplitSection } from './ServicesAndDoctorsSplitSection';
-import { BookingStepsBanner } from './BookingStepsBanner';
 import { SymptomCheckerSection } from './SymptomCheckerSection';
 import { HomeCareAndInsuranceSection } from './HomeCareAndInsuranceSection';
 import { LocationHoursReviewsSection } from './LocationHoursReviewsSection';
@@ -55,32 +52,7 @@ export const PublicHomepage: React.FC<PublicHomepageProps> = ({
         settings={settings}
       />
 
-      {/* 2. 4 Quick Action Highlight Cards (New Patient, Family Care, Quick Appointment, Preventive Check-up) */}
-      <QuickActionCards
-        lang={lang}
-        navigateTo={navigateTo}
-        onOpenBooking={() => onOpenBooking()}
-      />
-
-      {/* 3. Split Section: "Our Services" (Left) & "Meet Our Doctors" (Right) */}
-      <ServicesAndDoctorsSplitSection
-        doctors={doctors}
-        services={services}
-        departments={departments}
-        lang={lang}
-        onBookDoctor={(doc) => onOpenBooking({ type: 'DOCTOR', id: doc.id })}
-        onSelectService={(srv) => onOpenBooking({ type: 'SERVICE', id: srv.id })}
-        onViewAllDoctors={() => navigateTo('/doctors')}
-        onViewAllServices={() => navigateTo('/services')}
-      />
-
-      {/* 4. Book Your Appointment in 4 Simple Steps (Deep Navy Banner) */}
-      <BookingStepsBanner
-        lang={lang}
-        onOpenBooking={() => onOpenBooking()}
-      />
-
-      {/* 5. "How Can We Help You Today?" (Interactive Symptom & Guidance Search Box) */}
+      {/* 2. "How Can We Help You Today?" (Interactive Symptom & Guidance Search Box) */}
       <SymptomCheckerSection
         doctors={doctors}
         services={services}
@@ -90,20 +62,20 @@ export const PublicHomepage: React.FC<PublicHomepageProps> = ({
         navigateTo={navigateTo}
       />
 
-      {/* 6. Video / Home Care Consultation (Left) + We Accept Insurance (Right) */}
+      {/* 3. Video / Home Care Consultation (Left) + We Accept Insurance (Right) */}
       <HomeCareAndInsuranceSection
         lang={lang}
         onOpenBooking={(prefill) => onOpenBooking(prefill)}
         settings={settings}
       />
 
-      {/* 7. 3-Column Info Grid: Our Location + Opening Hours + What Our Patients Say */}
+      {/* 4. 3-Column Info Grid: Our Location + Opening Hours + What Our Patients Say */}
       <LocationHoursReviewsSection
         lang={lang}
         settings={settings}
       />
 
-      {/* 8. Frequently Asked Questions (Left) & Prepare For Your Visit (Right) */}
+      {/* 5. Frequently Asked Questions (Left) & Prepare For Your Visit (Right) */}
       <FAQAndPrepareSection
         faqs={faqs}
         lang={lang}

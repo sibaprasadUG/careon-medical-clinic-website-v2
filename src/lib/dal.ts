@@ -371,8 +371,8 @@ export const DataAccessLayer = {
       s.address = 'Kumarpur (Amarttya Palli), Contai, Purba Medinipur, 721401';
       s.locationName = 'Contai, Purba Medinipur';
     }
-    if (!s.openingHours || s.openingHours.includes('08:00 AM') || s.openingHours.includes('02:00 PM')) {
-      s.openingHours = 'Mon – Sat: 09:00 AM – 07:00 PM | Sunday: Closed';
+    if (!s.openingHours || s.openingHours.includes('Closed') || s.openingHours.includes('09:00 AM')) {
+      s.openingHours = 'Monday – Sunday: 08:00 AM – 07:00 PM';
     }
     if (!s.brand?.logoUrl && !s.logoUrl) {
       s.brand = {

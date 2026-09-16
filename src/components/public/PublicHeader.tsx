@@ -45,7 +45,7 @@ export const PublicHeader: React.FC<PublicHeaderProps> = ({
   const brandLogoUrl =
     settings?.brand?.logoUrl ||
     settings?.logoUrl ||
-    '/careon_logo.png';
+    'https://tgwthqwivtmarjsslxxn.supabase.co/storage/v1/object/public/careon-media/assets/doctor/asset-1789066744779-h4uevf-careon_logo_png.png';
 
   useEffect(() => {
     const handleScroll = () => {
@@ -191,7 +191,7 @@ export const PublicHeader: React.FC<PublicHeaderProps> = ({
             </div>
             <div>
               <div className="text-base sm:text-lg font-extrabold text-[#0B192C] tracking-tight leading-tight flex flex-wrap items-baseline">
-                Care<span className="text-[#007E70]">On</span>
+                Care<span className="text-red-600">On</span>
                 <span className="text-xs sm:text-xs font-semibold text-[#007E70] ml-1.5 font-bengali">
                   মানবিক স্বাস্থ্য সেবায় সর্বদা আপনার পাশে
                 </span>
